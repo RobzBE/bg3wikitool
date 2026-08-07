@@ -9,9 +9,12 @@ internal sealed class CharacterSheetPanel : UserControl
     private readonly ComboBox _difficulty = new();
     private readonly NumericUpDown _level = new();
     private readonly Dictionary<string, NumericUpDown> _abilities = [];
+    private readonly Dictionary<string, NumericUpDown> _classLevels = [];
     private readonly Label _title = new();
     private readonly Label _identityCaption = new();
     private readonly Label _abilityCaption = new();
+    private readonly Label _classLevelsCaption = new();
+    private readonly Label _classLevelSummary = new();
     private readonly Label _offenseCaption = new();
     private readonly Label _defenseCaption = new();
     private readonly Label _threatCaption = new();
@@ -65,11 +68,13 @@ internal sealed class CharacterSheetPanel : UserControl
         _equipmentCaption.Text = Localization.T("EquippedGear");
         _conditionsCaption.Text = Localization.T("ActiveConditions");
         _raceCaption.Text = Localization.T("Race");
-        _classCaption.Text = Localization.T("Class");
-        _levelCaption.Text = Localization.T("Level");
+        _classCaption.Text = Localization.T("StartClass");
+        _levelCaption.Text = Localization.T("TotalLevel");
+        _classLevelsCaption.Text = Localization.T("ClassLevels");
         _difficultyCaption.Text = Localization.T("Difficulty");
         _difficultyInfo.Text = Localization.T("Difficulty" + (_difficulty.SelectedItem as string ?? _state.Difficulty));
         _benchmarkNote.Text = Localization.T("BenchmarkNote");
+        RefreshClassLevelControls();
         RefreshCalculations();
     }
 
@@ -110,6 +115,9 @@ internal sealed class CharacterSheetPanel : UserControl
         identity.Controls.Add(_levelCaption, 0, 2);
         _level.Minimum = 1;
         _level.Maximum = 12;
+        _level.Increment = 0;
+        _level.ReadOnly = true;
+        _level.InterceptArrowKeys = false;
         _level.Dock = DockStyle.Top;
         _level.Font = Theme.Body(9f);
         identity.Controls.Add(_level, 0, 3);
@@ -119,6 +127,33 @@ internal sealed class CharacterSheetPanel : UserControl
         identity.Controls.Add(_difficultyInfo, 0, 4);
         identity.SetColumnSpan(_difficultyInfo, 2);
         content.Controls.Add(identity);
+
+        ConfigureSection(_classLevelsCaption);
+        content.Controls.Add(_classLevelsCaption);
+        var classLevels = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, Margin = new Padding(0, 0, 0, 4) };
+        classLevels.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        classLevels.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        for (var index = 0; index < CharacterCalculator.Classes.Length; index++)
+        {
+            var className = CharacterCalculator.Classes[index];
+            var box = new NumericUpDown
+            {
+                Minimum = 0,
+                Maximum = 12,
+                Dock = DockStyle.Top,
+                Font = Theme.Body(8.5f),
+                Tag = className,
+                Margin = new Padding(2)
+            };
+            _classLevels[className] = box;
+            var cell = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Margin = new Padding(1) };
+            cell.Controls.Add(Caption(className));
+            cell.Controls.Add(box);
+            classLevels.Controls.Add(cell, index % 2, index / 2);
+        }
+        content.Controls.Add(classLevels);
+        ConfigureBody(_classLevelSummary, true);
+        content.Controls.Add(_classLevelSummary);
 
         ConfigureSection(_abilityCaption);
         content.Controls.Add(_abilityCaption);
@@ -199,10 +234,11 @@ internal sealed class CharacterSheetPanel : UserControl
     private void LoadStateIntoControls()
     {
         _updating = true;
+        _state.NormalizeClassLevels(!_state.Difficulty.Equals("Explorer", StringComparison.OrdinalIgnoreCase));
         _race.SelectedItem = CharacterCalculator.Races.Contains(_state.Race) ? _state.Race : "Human";
         _class.SelectedItem = CharacterCalculator.Classes.Contains(_state.ClassName) ? _state.ClassName : "Fighter";
         _difficulty.SelectedItem = CharacterCalculator.Difficulties.Contains(_state.Difficulty) ? _state.Difficulty : "Balanced";
-        _level.Value = Math.Clamp(_state.Level, 1, 12);
+        RefreshClassLevelControls();
         foreach (var ability in CharacterCalculator.AbilityNames)
             _abilities[ability].Value = Math.Clamp(_state.GetAbility(ability), 3, 20);
         _difficultyInfo.Text = Localization.T("Difficulty" + (_difficulty.SelectedItem as string ?? "Balanced"));
@@ -212,9 +248,10 @@ internal sealed class CharacterSheetPanel : UserControl
     private void WireEvents()
     {
         _race.SelectedIndexChanged += (_, _) => UpdateStateFromControls();
-        _class.SelectedIndexChanged += (_, _) => UpdateStateFromControls();
+        _class.SelectedIndexChanged += (_, _) => ChangeStartingClass();
         _difficulty.SelectedIndexChanged += (_, _) => UpdateStateFromControls();
-        _level.ValueChanged += (_, _) => UpdateStateFromControls();
+        foreach (var box in _classLevels.Values)
+            box.ValueChanged += (_, _) => UpdateStateFromControls();
         foreach (var box in _abilities.Values)
             box.ValueChanged += (_, _) => UpdateStateFromControls();
         _conditions.ItemCheck += (_, eventArgs) =>
@@ -238,11 +275,49 @@ internal sealed class CharacterSheetPanel : UserControl
         _state.ClassName = _class.SelectedItem as string ?? "Fighter";
         _state.Difficulty = _difficulty.SelectedItem as string ?? "Balanced";
         _difficultyInfo.Text = Localization.T("Difficulty" + _state.Difficulty);
-        _state.Level = (int)_level.Value;
+        foreach (var pair in _classLevels)
+            _state.ClassLevels[pair.Key] = (int)pair.Value.Value;
+        _state.NormalizeClassLevels(!_state.Difficulty.Equals("Explorer", StringComparison.OrdinalIgnoreCase));
+        RefreshClassLevelControls();
         foreach (var pair in _abilities)
             _state.SetAbility(pair.Key, (int)pair.Value.Value);
         RefreshCalculations();
         StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void ChangeStartingClass()
+    {
+        if (_updating)
+            return;
+        var newClass = _class.SelectedItem as string ?? "Fighter";
+        var previousClass = _state.ClassName;
+        if (!newClass.Equals(previousClass, StringComparison.OrdinalIgnoreCase) && _state.GetClassLevel(newClass) == 0)
+        {
+            var previousLevel = _state.GetClassLevel(previousClass);
+            if (previousLevel > 0)
+                _state.ClassLevels[previousClass] = previousLevel - 1;
+            _state.ClassLevels[newClass] = 1;
+        }
+        _state.ClassName = newClass;
+        _state.NormalizeClassLevels(!_state.Difficulty.Equals("Explorer", StringComparison.OrdinalIgnoreCase));
+        RefreshClassLevelControls();
+        UpdateStateFromControls();
+    }
+
+    private void RefreshClassLevelControls()
+    {
+        var previousUpdating = _updating;
+        _updating = true;
+        var multiclassAllowed = !_state.Difficulty.Equals("Explorer", StringComparison.OrdinalIgnoreCase);
+        foreach (var pair in _classLevels)
+        {
+            pair.Value.Value = Math.Clamp(_state.GetClassLevel(pair.Key), 0, 12);
+            pair.Value.Enabled = multiclassAllowed || pair.Key.Equals(_state.ClassName, StringComparison.OrdinalIgnoreCase);
+        }
+        _level.Value = Math.Clamp(_state.TotalLevel, 1, 12);
+        _classLevelSummary.Text = Localization.Format("ClassLevelSummary", _state.TotalLevel, 12)
+                                  + (multiclassAllowed ? "" : Environment.NewLine + Localization.T("ExplorerMulticlassDisabled"));
+        _updating = previousUpdating;
     }
 
     private void RefreshCalculations(bool rebuildConditions = true)
@@ -254,7 +329,7 @@ internal sealed class CharacterSheetPanel : UserControl
             ? ""
             : stats.AttackRollAdvantage ? " • ADV" : " • DIS";
         var enemySaves = stats.EnemySavingThrowDisadvantage ? " • Enemy saves: DIS" : "";
-        _offense.Text = Localization.Format("OffenseLine", Signed(stats.WeaponAttack), stats.AttackAbility, Signed(stats.SpellAttack), stats.SpellAbility, stats.Proficiency) + advantage + enemySaves;
+        _offense.Text = Localization.Format("OffenseLine", Signed(stats.WeaponAttack), stats.AttackAbility, Signed(stats.SpellAttack), stats.SpellAbility, stats.SpellClass, stats.Proficiency) + advantage + enemySaves;
         var defenseExtras = new List<string>();
         if (stats.CriticalHitImmune) defenseExtras.Add(Localization.T("NoCriticalHits"));
         if (stats.DamageReduction > 0) defenseExtras.Add(Localization.Format("DamageReduction", stats.DamageReduction));

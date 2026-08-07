@@ -26,15 +26,25 @@ internal static class AppDiagnostics
         {
             var store = new ProgressStore(progressDirectory);
             items[0].Found = true;
-            var testCharacter = new CharacterState { Race = "Drow", ClassName = "Wizard", Difficulty = "Tactician", Level = 7, Intelligence = 18 };
+            var testCharacter = new CharacterState
+            {
+                Race = "Drow",
+                ClassName = "Fighter",
+                Difficulty = "Tactician",
+                Level = 7,
+                Intelligence = 18,
+                ClassLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Fighter"] = 2, ["Wizard"] = 5 }
+            };
             store.Save(items, testCharacter);
             var loadedState = store.LoadState();
             progressRoundTrip = loadedState.FoundKeys.Contains(items[0].ProgressKey);
             characterRoundTrip = loadedState.Character.Race == "Drow"
-                                 && loadedState.Character.ClassName == "Wizard"
+                                 && loadedState.Character.ClassName == "Fighter"
                                  && loadedState.Character.Difficulty == "Tactician"
                                  && loadedState.Character.Level == 7
-                                 && loadedState.Character.Intelligence == 18;
+                                 && loadedState.Character.Intelligence == 18
+                                 && loadedState.Character.GetClassLevel("Fighter") == 2
+                                 && loadedState.Character.GetClassLevel("Wizard") == 5;
             items[0].Found = false;
         }
         finally
@@ -67,10 +77,67 @@ internal static class AppDiagnostics
                                        && CharacterCalculator.AttackHitChance(-100, 0) == 95
                                        && CharacterCalculator.ApplyRollMode(5, false, true) == 0.25
                                        && CharacterCalculator.ApplyRollMode(95, true, false) == 99.75;
+        var multiclassState = new CharacterState
+        {
+            ClassName = "Fighter",
+            Level = 5,
+            Intelligence = 18,
+            ClassLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Fighter"] = 1, ["Wizard"] = 4 }
+        };
+        var multiclassStats = CharacterCalculator.Calculate(multiclassState, items);
+        var explorerMulticlassState = new CharacterState
+        {
+            ClassName = "Fighter",
+            Difficulty = "Explorer",
+            Level = 4,
+            ClassLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Fighter"] = 2, ["Wizard"] = 2 }
+        };
+        CharacterCalculator.Calculate(explorerMulticlassState, items);
+        var cappedState = new CharacterState
+        {
+            ClassName = "Fighter",
+            Level = 16,
+            ClassLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Fighter"] = 8, ["Wizard"] = 8 }
+        };
+        cappedState.NormalizeClassLevels(allowMulticlass: true);
+        var legacyState = new CharacterState { ClassName = "Wizard", Level = 7 };
+        CharacterCalculator.Calculate(legacyState, items);
+        var heavyArmour = items.First(item => item.Type.Contains("Heavy", StringComparison.OrdinalIgnoreCase));
+        heavyArmour.Equipped = true;
+        var wizardFighterStats = CharacterCalculator.Calculate(
+            new CharacterState
+            {
+                ClassName = "Wizard",
+                Level = 2,
+                ClassLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Wizard"] = 1, ["Fighter"] = 1 }
+            },
+            items);
+        var fighterWizardStats = CharacterCalculator.Calculate(
+            new CharacterState
+            {
+                ClassName = "Fighter",
+                Level = 2,
+                ClassLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Fighter"] = 1, ["Wizard"] = 1 }
+            },
+            items);
+        heavyArmour.Equipped = false;
+        var multiclassMathApplied = multiclassState.TotalLevel == 5
+                                    && multiclassStats.Proficiency == 3
+                                    && multiclassStats.HitPoints == 36
+                                    && multiclassStats.SpellClass == "Wizard"
+                                    && multiclassStats.SpellSaveDc == 15
+                                    && multiclassStats.Saves["STR"] == 6
+                                    && multiclassStats.Saves["INT"] == 4
+                                    && explorerMulticlassState.GetClassLevel("Fighter") == 4
+                                    && explorerMulticlassState.GetClassLevel("Wizard") == 0
+                                    && cappedState.TotalLevel == 12
+                                    && legacyState.GetClassLevel("Wizard") == 7
+                                    && wizardFighterStats.NonProficientGear.Contains(heavyArmour.Name)
+                                    && !fighterWizardStats.NonProficientGear.Contains(heavyArmour.Name);
 
         var report = new
         {
-            Passed = items.Count == 556 && uniqueProgressKeys == items.Count && loadedImages == items.Count && progressRoundTrip && characterRoundTrip && displacementMathApplied && difficultyMathApplied && worstCaseThreatsApplied && naturalRollBoundsApplied && FontManager.IsAlegreyaLoaded,
+            Passed = items.Count == 556 && uniqueProgressKeys == items.Count && loadedImages == items.Count && progressRoundTrip && characterRoundTrip && displacementMathApplied && difficultyMathApplied && worstCaseThreatsApplied && naturalRollBoundsApplied && multiclassMathApplied && FontManager.IsAlegreyaLoaded,
             ItemCount = items.Count,
             ActCounts = items.GroupBy(item => item.Act).ToDictionary(group => group.Key, group => group.Count()),
             UniqueProgressKeys = uniqueProgressKeys,
@@ -85,6 +152,7 @@ internal static class AppDiagnostics
             DifficultyMathApplied = difficultyMathApplied,
             WorstCaseThreatsApplied = worstCaseThreatsApplied,
             NaturalRollBoundsApplied = naturalRollBoundsApplied,
+            MulticlassMathApplied = multiclassMathApplied,
             EmbeddedAlegreyaLoaded = FontManager.IsAlegreyaLoaded
         };
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(reportPath))!);

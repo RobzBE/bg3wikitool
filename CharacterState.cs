@@ -6,6 +6,7 @@ internal sealed class CharacterState
     public string ClassName { get; set; } = "Fighter";
     public string Difficulty { get; set; } = "Balanced";
     public int Level { get; set; } = 1;
+    public Dictionary<string, int> ClassLevels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public int Strength { get; set; } = 16;
     public int Dexterity { get; set; } = 14;
     public int Constitution { get; set; } = 14;
@@ -15,6 +16,76 @@ internal sealed class CharacterState
     public List<string> EquippedKeys { get; set; } = [];
     public List<string> DisabledConditionalEffects { get; set; } = [];
     public List<string> EnabledConditionalEffects { get; set; } = [];
+
+    public int TotalLevel
+    {
+        get
+        {
+            var assignedLevels = ClassLevels?.Values.Sum() ?? 0;
+            return Math.Clamp(assignedLevels > 0 ? assignedLevels : Level, 1, 12);
+        }
+    }
+
+    public int GetClassLevel(string className) =>
+        ClassLevels is not null && ClassLevels.TryGetValue(className, out var level) ? level : 0;
+
+    public bool HasClass(string className) => GetClassLevel(className) > 0;
+
+    public void NormalizeClassLevels(bool allowMulticlass)
+    {
+        if (!CharacterCalculator.Classes.Contains(ClassName, StringComparer.OrdinalIgnoreCase))
+            ClassName = "Fighter";
+
+        ClassLevels ??= new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var normalized = CharacterCalculator.Classes.ToDictionary(
+            className => className,
+            className => Math.Clamp(GetClassLevel(className), 0, 12),
+            StringComparer.OrdinalIgnoreCase);
+
+        var requestedTotal = normalized.Values.Sum();
+        if (requestedTotal == 0)
+        {
+            normalized[ClassName] = Math.Clamp(Level, 1, 12);
+            requestedTotal = normalized[ClassName];
+        }
+
+        if (!allowMulticlass)
+        {
+            foreach (var className in CharacterCalculator.Classes)
+                normalized[className] = 0;
+            normalized[ClassName] = Math.Clamp(requestedTotal, 1, 12);
+        }
+        else
+        {
+            if (normalized[ClassName] == 0)
+            {
+                if (requestedTotal >= 12)
+                {
+                    var donor = CharacterCalculator.Classes.LastOrDefault(className =>
+                        !className.Equals(ClassName, StringComparison.OrdinalIgnoreCase) && normalized[className] > 0);
+                    if (donor is not null)
+                        normalized[donor]--;
+                }
+                normalized[ClassName] = 1;
+            }
+
+            var excess = normalized.Values.Sum() - 12;
+            foreach (var className in CharacterCalculator.Classes.Reverse())
+            {
+                if (excess <= 0)
+                    break;
+                var minimum = className.Equals(ClassName, StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+                var reduction = Math.Min(excess, normalized[className] - minimum);
+                normalized[className] -= reduction;
+                excess -= reduction;
+            }
+        }
+
+        ClassLevels = normalized
+            .Where(pair => pair.Value > 0)
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+        Level = ClassLevels.Values.Sum();
+    }
 
     public bool IsEffectActive(ItemEffect effect)
     {

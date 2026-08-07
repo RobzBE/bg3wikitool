@@ -12,7 +12,8 @@ A portable, offline Windows app for the Act 1, Act 2 and Act 3 items in the supp
 - Clickable source links to BG3 Wiki.
 - Mark every item as found/collected.
 - Equip every item independently from its found status; mutually exclusive gear slots are handled automatically and two rings are allowed.
-- Persistent race, class, level, difficulty and level-1 ability scores.
+- Persistent race, starting class, per-class multiclass level distribution, difficulty and level-1 ability scores. Total character level is capped at 12; Explorer automatically keeps the build single-classed.
+- Multiclass calculations use total character level for proficiency, the starting class for saving-throw proficiencies and first-level HP, each class for its subsequent HP, and BG3's reduced multiclass armour proficiencies. The displayed spell attack/DC uses the active class with the strongest relevant casting ability.
 - Live offense and defense statistics including AC, Spell Save DC, HP, initiative, movement and all six saving throws.
 - Worst-case enemy success chances per act for weapon attacks, spell attacks and DEX/CON/WIS spell effects. The benchmark uses Grym (Act 1), the Apostle of Myrkul (Act 2), and the Dominated Red Dragon plus Netherbrain (Act 3), using their highest difficulty-specific attack bonus or casting DC.
 - Attack-roll probabilities preserve the natural-roll rules: 1 always misses and 20 always hits, unless critical-hit immunity turns the natural 20 into a regular roll that can still miss sufficiently high AC. Saving throws do not automatically fail or succeed on a natural 1 or 20.
