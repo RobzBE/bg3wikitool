@@ -12,6 +12,7 @@ internal enum ItemEffectKind
     AttackRollAdvantage,
     EnemySavingThrowDisadvantage,
     CriticalHitImmunity,
+    CriticalThresholdReduction,
     DamageReduction,
     Resistance,
     ArmourClassBonus,
@@ -116,6 +117,15 @@ internal static class ItemEffectParser
         var sentences = item.Description.Split(['\r', '\n', '.'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         foreach (var sentence in sentences)
         {
+            if (Regex.IsMatch(sentence, @"number you need to roll a Critical Hit[^.]*reduced by\s+1", RegexOptions.IgnoreCase)
+                || Regex.IsMatch(sentence, @"land a Critical Hit when rolling a 19", RegexOptions.IgnoreCase))
+            {
+                // "while attacking" and "when rolling a 19" describe the roll, not
+                // an optional state. Preserve real conditions such as while Hiding,
+                // Obscured, Invisible, or while the off-hand is empty.
+                var conditionText = Regex.Replace(sentence, @"\bwhile attacking\b|\bwhen rolling a 19\b", "", RegexOptions.IgnoreCase);
+                Add(effects, item, conditionText, ItemEffectKind.CriticalThresholdReduction, "Attack rolls", "Critical threshold -1", 1);
+            }
             AddNumericMatch(effects, item, sentence, ItemEffectKind.SpellSaveDcBonus, "Spell Save DC", @"\+\s*(\d+)\s*(?:bonus\s+to\s+)?Spell Save DC", "Spell Save DC");
             AddNumericMatch(effects, item, sentence, ItemEffectKind.SpellSaveDcBonus, "Spell Save DC", @"\+\s*(\d+)[^.]{0,55}Spell Attack Rolls?[^.]{0,40}Spell Save DC", "Spell Save DC");
             AddNumericMatch(effects, item, sentence, ItemEffectKind.SpellSaveDcBonus, "Spell Save DC", @"\+\s*(\d+)[^.]{0,55}Attack Rolls?[^.]{0,45}Spell Save DC", "Spell Save DC");

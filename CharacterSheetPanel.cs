@@ -41,6 +41,17 @@ internal sealed class CharacterSheetPanel : UserControl
     private readonly Label _difficultyInfo = new();
     private readonly Label _acValue = new();
     private readonly Label _spellDcValue = new();
+    private readonly Label _criticalValue = new();
+    private readonly ToolTip _calculationToolTip = new()
+    {
+        InitialDelay = 250,
+        ReshowDelay = 100,
+        AutoPopDelay = 30000,
+        ShowAlways = true
+    };
+    private Control? _acCard;
+    private Control? _spellDcCard;
+    private Control? _criticalCard;
     private readonly Label _offense = new();
     private readonly Label _defense = new();
     private readonly Label _saves = new();
@@ -80,6 +91,10 @@ internal sealed class CharacterSheetPanel : UserControl
 
     public CharacterState CurrentState => _state;
     public int ActiveTemplateIndex => _activeTemplateIndex;
+    public bool CalculationToolTipsReady =>
+        !string.IsNullOrWhiteSpace(_calculationToolTip.GetToolTip(_acValue))
+        && !string.IsNullOrWhiteSpace(_calculationToolTip.GetToolTip(_spellDcValue))
+        && !string.IsNullOrWhiteSpace(_calculationToolTip.GetToolTip(_criticalValue));
 
     public void SetLanguage()
     {
@@ -304,11 +319,17 @@ internal sealed class CharacterSheetPanel : UserControl
         };
         statsContent.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
-        var highlights = new TableLayoutPanel { Dock = DockStyle.Top, Height = 82, ColumnCount = 2, Margin = new Padding(0, 2, 0, 10) };
-        highlights.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        highlights.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        highlights.Controls.Add(HighlightCard("AC", _acValue), 0, 0);
-        highlights.Controls.Add(HighlightCard("SPELL SAVE DC", _spellDcValue), 1, 0);
+        var highlights = new TableLayoutPanel { Dock = DockStyle.Top, Height = 82, ColumnCount = 3, Margin = new Padding(0, 2, 0, 10) };
+        highlights.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33));
+        highlights.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34));
+        highlights.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33));
+        _acCard = HighlightCard("AC", _acValue);
+        _spellDcCard = HighlightCard("SPELL DC", _spellDcValue);
+        _criticalCard = HighlightCard("CRITICAL", _criticalValue);
+        _criticalValue.Font = Theme.Heading(13f);
+        highlights.Controls.Add(_acCard, 0, 0);
+        highlights.Controls.Add(_spellDcCard, 1, 0);
+        highlights.Controls.Add(_criticalCard, 2, 0);
         statsContent.Controls.Add(highlights);
 
         ConfigureSection(_offenseCaption);
@@ -641,6 +662,12 @@ internal sealed class CharacterSheetPanel : UserControl
         var stats = CharacterCalculator.Calculate(_state, _items);
         _acValue.Text = stats.ArmourClass.ToString();
         _spellDcValue.Text = stats.SpellSaveDc.ToString();
+        _criticalValue.Text = stats.CriticalThreshold == stats.SpellCriticalThreshold
+            ? $"{stats.CriticalThreshold}+"
+            : $"W{stats.CriticalThreshold}+  S{stats.SpellCriticalThreshold}+";
+        SetCalculationToolTip(_acCard, stats.ArmourClassBreakdown);
+        SetCalculationToolTip(_spellDcCard, stats.SpellSaveDcBreakdown);
+        SetCalculationToolTip(_criticalCard, stats.CriticalBreakdown);
         var advantage = stats.AttackRollAdvantage == stats.AttackRollDisadvantage
             ? ""
             : stats.AttackRollAdvantage ? " • ADV" : " • DIS";
@@ -800,6 +827,22 @@ internal sealed class CharacterSheetPanel : UserControl
     }
 
     private static string Signed(int value) => value >= 0 ? $"+{value}" : value.ToString();
+
+    private void SetCalculationToolTip(Control? root, string text)
+    {
+        if (root is null)
+            return;
+        _calculationToolTip.SetToolTip(root, text);
+        foreach (Control child in root.Controls)
+            SetCalculationToolTip(child, text);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            _calculationToolTip.Dispose();
+        base.Dispose(disposing);
+    }
 
     private sealed record ConditionalEffectOption(ItemEffect Effect)
     {

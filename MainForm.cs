@@ -21,6 +21,7 @@ public sealed class MainForm : Form
     private readonly ComboBox _typeBox = new();
     private readonly ComboBox _placeBox = new();
     private readonly CheckBox _notesOnly = new();
+    private readonly CheckBox _equippedOnly = new();
     private readonly ComboBox _foundBox = new();
     private readonly ComboBox _sortBox = new();
     private readonly ComboBox _directionBox = new();
@@ -93,6 +94,7 @@ public sealed class MainForm : Form
     {
         var iterations = 0;
         string? failure = null;
+        var equippedFilterApplied = false;
         try
         {
             var searches = new[] { "", "a", "shield", "absolute", "lower city", "zzzz-no-result", "ring", "", "cloak", "act 3", "" };
@@ -120,6 +122,14 @@ public sealed class MainForm : Form
                 iterations++;
             }
 
+            _equippedOnly.Checked = true;
+            Application.DoEvents();
+            equippedFilterApplied = _visibleItems.All(item =>
+                _characters[_activeCharacterIndex].EquippedKeys.Contains(item.ProgressKey, StringComparer.OrdinalIgnoreCase));
+            _equippedOnly.Checked = false;
+            Application.DoEvents();
+            iterations += 2;
+
             _foundBox.SelectedIndex = 0;
             for (var index = 0; index < _actList.Items.Count; index++)
             {
@@ -141,9 +151,11 @@ public sealed class MainForm : Form
 
         var report = new
         {
-            Passed = failure is null,
+            Passed = failure is null && equippedFilterApplied && _characterSheet.CalculationToolTipsReady,
             Iterations = iterations,
             FinalVisibleItems = _visibleItems.Count,
+            CalculationToolTipsReady = _characterSheet.CalculationToolTipsReady,
+            EquippedFilterApplied = equippedFilterApplied,
             Failure = failure
         };
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(reportPath))!);
@@ -239,11 +251,11 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 21,
+            RowCount = 22,
             BackColor = Theme.ParchmentAlt
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (var index = 0; index < 20; index++)
+        for (var index = 0; index < 21; index++)
             layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
@@ -302,6 +314,13 @@ public sealed class MainForm : Form
         _notesOnly.ForeColor = Theme.Ink;
         _notesOnly.Margin = new Padding(0, 10, 0, 8);
         layout.Controls.Add(_notesOnly);
+
+        _equippedOnly.Text = Localization.T("EquippedOnly");
+        _equippedOnly.Tag = "i18n:EquippedOnly";
+        _equippedOnly.AutoSize = true;
+        _equippedOnly.ForeColor = Theme.Ink;
+        _equippedOnly.Margin = new Padding(0, 0, 0, 8);
+        layout.Controls.Add(_equippedOnly);
 
         AddLocalizedCaption(layout, "Progress");
         ConfigureFilterCombo(_foundBox);
@@ -818,6 +837,7 @@ public sealed class MainForm : Form
         _typeBox.SelectedIndexChanged += (_, _) => ApplyFilters();
         _placeBox.SelectedIndexChanged += (_, _) => ApplyFilters();
         _notesOnly.CheckedChanged += (_, _) => ApplyFilters();
+        _equippedOnly.CheckedChanged += (_, _) => ApplyFilters();
         _foundBox.SelectedIndexChanged += (_, _) => ApplyFilters();
         _sortBox.SelectedIndexChanged += (_, _) => ApplyFilters();
         _directionBox.SelectedIndexChanged += (_, _) => ApplyFilters();
@@ -830,8 +850,7 @@ public sealed class MainForm : Form
         {
             _activeCharacterIndex = index;
             UpdateEquipmentColumnHeaders();
-            _grid.Invalidate();
-            ShowSelectedItem();
+            ApplyFilters();
         };
         _grid.SelectionChanged += (_, _) =>
         {
@@ -886,6 +905,7 @@ public sealed class MainForm : Form
                 string.Equals(item.ActArea, place, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(item.Location, place, StringComparison.OrdinalIgnoreCase)) &&
             (!_notesOnly.Checked || item.Notes.Count > 0) &&
+            (!_equippedOnly.Checked || _characters[_activeCharacterIndex].EquippedKeys.Contains(item.ProgressKey, StringComparer.OrdinalIgnoreCase)) &&
             (_foundBox.SelectedIndex == 0 ||
                 (_foundBox.SelectedIndex == 2 && item.Found) ||
                 (_foundBox.SelectedIndex == 1 && !item.Found)) &&
@@ -1094,6 +1114,7 @@ public sealed class MainForm : Form
         _typeBox.SelectedIndex = 0;
         _placeBox.SelectedIndex = 0;
         _notesOnly.Checked = false;
+        _equippedOnly.Checked = false;
         _foundBox.SelectedIndex = 0;
         _sortBox.SelectedIndex = 0;
         _directionBox.SelectedIndex = 0;
@@ -1161,8 +1182,13 @@ public sealed class MainForm : Form
             _characterSheet.RefreshFromEquipment();
         }
         SaveProgressWithWarning();
-        _grid.Invalidate();
-        ShowSelectedItem();
+        if (_equippedOnly.Checked && characterIndex == _activeCharacterIndex)
+            ApplyFilters();
+        else
+        {
+            _grid.Invalidate();
+            ShowSelectedItem();
+        }
     }
 
     private void SaveProgressWithWarning()

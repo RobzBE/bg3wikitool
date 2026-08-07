@@ -214,9 +214,66 @@ internal static class AppDiagnostics
                                       && gearCharacterTwo.EquippedKeys.Count == 1
                                       && gearCharacterTwo.EquippedKeys.Contains(testShields[0].ProgressKey);
 
+        var deadShot = items.First(item => item.Name == "The Dead Shot");
+        deadShot.Equipped = true;
+        var criticalStats = CharacterCalculator.Calculate(
+            new CharacterState
+            {
+                ClassName = "Fighter",
+                Level = 4,
+                ClassLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Fighter"] = 4 },
+                Feats = [new FeatSelection { Name = "Spell Sniper" }]
+            },
+            items);
+        deadShot.Equipped = false;
+        var criticalMathApplied = criticalStats.CriticalThreshold == 19
+                                  && criticalStats.SpellCriticalThreshold == 18
+                                  && criticalStats.ActiveEffects.Any(effect => effect.Kind == ItemEffectKind.CriticalThresholdReduction)
+                                  && criticalStats.CriticalBreakdown.Contains("The Dead Shot", StringComparison.OrdinalIgnoreCase)
+                                  && criticalStats.CriticalBreakdown.Contains("Spell Sniper", StringComparison.OrdinalIgnoreCase);
+        var parsedCriticalGear = items.SelectMany(ItemEffectParser.Parse)
+            .Where(effect => effect.Kind == ItemEffectKind.CriticalThresholdReduction)
+            .ToList();
+        var criticalGearParsingApplied = parsedCriticalGear.Count == 9
+                                         && parsedCriticalGear.Any(effect => effect.ItemName == "The Dead Shot" && !effect.Conditional)
+                                         && parsedCriticalGear.Any(effect => effect.ItemName == "Shade-Slayer Cloak" && effect.Conditional)
+                                         && parsedCriticalGear.Any(effect => effect.ItemName == "Unseen Menace" && effect.Conditional);
+        var criticalLoadoutItems = new[]
+        {
+            deadShot,
+            items.First(item => item.Name == "Bloodthirst"),
+            items.First(item => item.Name == "Sarevok's Horned Helmet"),
+            items.First(item => item.Name == "Shade-Slayer Cloak")
+        };
+        var criticalLoadout = new CharacterState
+        {
+            ClassName = "Fighter",
+            Level = 3,
+            ClassLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Fighter"] = 3 },
+            ActiveBuffs = ["Champion: Improved Critical Hit", "Elixir of Viciousness"]
+        };
+        foreach (var item in criticalLoadoutItems)
+        {
+            GearRules.EquipForCharacter(items, criticalLoadout, item);
+            item.Equipped = true;
+        }
+        var shadeEffect = ItemEffectParser.Parse(criticalLoadoutItems[3])
+            .Single(effect => effect.Kind == ItemEffectKind.CriticalThresholdReduction);
+        criticalLoadout.EnabledConditionalEffects.Add(shadeEffect.Id);
+        var thresholdFourteenStats = CharacterCalculator.Calculate(criticalLoadout, items);
+        foreach (var item in criticalLoadoutItems)
+            item.Equipped = false;
+        var thresholdFourteenApplied = criticalLoadout.EquippedKeys.Count == 4
+                                       && GearRules.SlotFor(deadShot) == "Ranged"
+                                       && thresholdFourteenStats.CriticalThreshold == 14;
+        var calculationsExplained = baselineStats.ArmourClassBreakdown.Contains($"= {baselineStats.ArmourClass}", StringComparison.Ordinal)
+                                    && baselineStats.SpellSaveDcBreakdown.Contains($"= {baselineStats.SpellSaveDc}", StringComparison.Ordinal)
+                                    && baselineStats.ArmourClassBreakdown.Length > 20
+                                    && baselineStats.SpellSaveDcBreakdown.Length > 20;
+
         var report = new
         {
-            Passed = items.Count == 556 && uniqueProgressKeys == items.Count && loadedImages == items.Count && progressRoundTrip && characterRoundTrip && templatesRoundTrip && templateGearSetsApplied && displacementMathApplied && difficultyMathApplied && worstCaseThreatsApplied && averageThreatsApplied && naturalRollBoundsApplied && multiclassMathApplied && featAndBuffMathApplied && FontManager.IsAlegreyaLoaded,
+            Passed = items.Count == 556 && uniqueProgressKeys == items.Count && loadedImages == items.Count && progressRoundTrip && characterRoundTrip && templatesRoundTrip && templateGearSetsApplied && displacementMathApplied && difficultyMathApplied && worstCaseThreatsApplied && averageThreatsApplied && naturalRollBoundsApplied && multiclassMathApplied && featAndBuffMathApplied && criticalMathApplied && criticalGearParsingApplied && thresholdFourteenApplied && calculationsExplained && FontManager.IsAlegreyaLoaded,
             ItemCount = items.Count,
             ActCounts = items.GroupBy(item => item.Act).ToDictionary(group => group.Key, group => group.Count()),
             UniqueProgressKeys = uniqueProgressKeys,
@@ -236,6 +293,15 @@ internal static class AppDiagnostics
             NaturalRollBoundsApplied = naturalRollBoundsApplied,
             MulticlassMathApplied = multiclassMathApplied,
             FeatAndBuffMathApplied = featAndBuffMathApplied,
+            CriticalMathApplied = criticalMathApplied,
+            CriticalGearParsingApplied = criticalGearParsingApplied,
+            CriticalGearSources = parsedCriticalGear.Count,
+            ThresholdFourteenApplied = thresholdFourteenApplied,
+            CriticalWeaponThreshold = criticalStats.CriticalThreshold,
+            CriticalSpellThreshold = criticalStats.SpellCriticalThreshold,
+            CriticalReductionEffects = criticalStats.ActiveEffects.Count(effect => effect.Kind == ItemEffectKind.CriticalThresholdReduction),
+            CriticalBreakdown = criticalStats.CriticalBreakdown,
+            CalculationBreakdownsApplied = calculationsExplained,
             EmbeddedAlegreyaLoaded = FontManager.IsAlegreyaLoaded
         };
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(reportPath))!);

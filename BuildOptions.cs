@@ -117,7 +117,9 @@ internal static class BuildOptions
         new("Patient Defence", "Enemy attacks have disadvantage until your next turn. Requires Monk level 2 and Ki."),
         new("Danger Sense", "Advantage on visible Dexterity-save effects. Requires Barbarian level 2 and no incapacitation."),
         new("Indomitable", "Reroll one failed saving throw. Requires Fighter level 9; toggle for the next benchmark save."),
-        new("Paladin Aura active", "Aura of Protection adds Charisma modifier to saves. Requires Paladin level 6 and consciousness.")
+        new("Paladin Aura active", "Aura of Protection adds Charisma modifier to saves. Requires Paladin level 6 and consciousness."),
+        new("Champion: Improved Critical Hit", "Toggle only for a Champion Fighter of level 3 or higher. Reduces the critical-hit threshold by 1."),
+        new("Elixir of Viciousness", "Reduces the critical-hit threshold by 1 until Long Rest.")
     ];
 
     public static int FeatSlotCount(CharacterState state)

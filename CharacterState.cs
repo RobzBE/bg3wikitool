@@ -163,6 +163,7 @@ internal static class GearRules
         if (type.Equals("Amulet", StringComparison.OrdinalIgnoreCase)) return "Amulet";
         if (type.Equals("Ring", StringComparison.OrdinalIgnoreCase)) return "Ring";
         if (type.Equals("Shield", StringComparison.OrdinalIgnoreCase)) return "Off Hand";
+        if (type.Contains("Bow", StringComparison.OrdinalIgnoreCase) || type.Contains("Crossbow", StringComparison.OrdinalIgnoreCase)) return "Ranged";
         return "Main Hand";
     }
 

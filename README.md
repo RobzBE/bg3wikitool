@@ -6,7 +6,7 @@ A portable, offline Windows app for the Act 1, Act 2 and Act 3 items in the supp
 
 - 20/60/20 layout: search and filters on the left, item table/details in the centre, and a live character sheet on the right.
 - Search by name, properties, location, description and notes.
-- Filters for act, rarity, type, area/location, notes and collected status.
+- Filters for act, rarity, type, area/location, notes, collected status and items equipped by the active character template.
 - Sort by name, rarity, type, act, location or status.
 - Offline preview images for all 556 item records.
 - Clickable source links to BG3 Wiki.
@@ -18,11 +18,11 @@ A portable, offline Windows app for the Act 1, Act 2 and Act 3 items in the supp
 - A separate Build tab provides class-dependent fighting styles, all 41 BG3 feats, feat choices and feat slots. Slots follow each individual class level (4/8/12), including Fighter 6 and Rogue 10.
 - Active spells and combat conditions can be toggled. Concentration is mutually exclusive, upcast variants such as Aid and Magic Weapon are grouped, and unmet prerequisites are shown instead of silently granting a bonus.
 - Stat-relevant class/feat/spell rules include, among others, Defence and Archery styles, Paladin Aura of Protection, Barbarian/Monk movement, Mage Armour, Shield, Shield of Faith, Blur, Haste, Barkskin, Longstrider, Warding Bond, Heroes' Feast, Aid, Magic Weapon, Bless, Tough, Alert, Resilient, Shield Master and armour-training feats.
-- Live offense and defense statistics including AC, Spell Save DC, HP, initiative, movement and all six saving throws.
+- Live offense and defense statistics including AC, Spell Save DC, critical-hit thresholds, HP, initiative, movement and all six saving throws. Hovering AC, Spell DC or Critical shows its complete source-by-source calculation.
 - Worst-case and representative-average enemy success chances per act for weapon attacks, spell attacks and DEX/CON/WIS spell effects. Worst case uses Grym (Act 1), the Apostle of Myrkul (Act 2), and the Dominated Red Dragon plus Netherbrain (Act 3). Average uses the act's expected proficiency plus a representative primary attack/casting ability baseline; both pass through the same difficulty, AC, save, advantage and item-effect mathematics.
 - Attack-roll probabilities preserve the natural-roll rules: 1 always misses and 20 always hits, unless critical-hit immunity turns the natural 20 into a regular roll that can still miss sufficiently high AC. The defensive spell-effect simulation likewise treats a natural 1 as a failed save and a natural 20 as a successful save.
 - Bless is calculated from the exact d20 + d4 probability distribution and combines correctly with saving-throw advantage/disadvantage.
-- Dynamic item-effect analysis for AC, ability changes, attack/save bonuses, advantage/disadvantage, critical-hit immunity, damage reduction and resistances.
+- Dynamic item-effect analysis for AC, ability changes, attack/save bonuses, advantage/disadvantage, critical-hit immunity and threshold reductions, damage reduction and resistances.
 - Conditional effects can be toggled. For example, Cloak of Displacement automatically applies enemy Disadvantage at the start of a turn and can be disabled after the wearer takes damage.
 - Explorer, Balanced, Tactician and Honour calculations, including Explorer proficiency/HP changes and the Tactician/Honour +2 enemy attack/save-DC modifier.
 - Portable progress file: `BG3-Item-Explorer-progress.json` is saved beside the exe.
