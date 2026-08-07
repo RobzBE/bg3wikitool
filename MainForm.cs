@@ -803,13 +803,18 @@ public sealed class MainForm : Form
         _sortBox.SelectedIndexChanged += (_, _) => ApplyFilters();
         _directionBox.SelectedIndexChanged += (_, _) => ApplyFilters();
         _characterSheet.StateChanged += (_, _) => SaveProgressWithWarning();
-        _grid.SelectionChanged += (_, _) => ShowSelectedItem();
+        _grid.SelectionChanged += (_, _) =>
+        {
+            ShowSelectedItem();
+            _grid.Invalidate();
+        };
         _grid.CellDoubleClick += (_, eventArgs) =>
         {
             if (eventArgs.RowIndex >= 0 && _grid.Rows[eventArgs.RowIndex].DataBoundItem is ItemRecord item)
                 OpenBestLink(item);
         };
         _grid.CellFormatting += GridOnCellFormatting;
+        _grid.RowPostPaint += GridOnRowPostPaint;
         _grid.CellContentClick += GridOnCellContentClick;
         _grid.KeyDown += GridOnKeyDown;
         Resize += (_, _) =>
@@ -959,6 +964,23 @@ public sealed class MainForm : Form
             eventArgs.Value = item.Equipped;
             eventArgs.FormattingApplied = true;
         }
+
+        // Preserve each column's semantic colours when the row is selected.
+        // Selection is shown with a gold outline in RowPostPaint instead.
+        eventArgs.CellStyle.SelectionBackColor = eventArgs.CellStyle.BackColor;
+        eventArgs.CellStyle.SelectionForeColor = eventArgs.CellStyle.ForeColor;
+    }
+
+    private void GridOnRowPostPaint(object? sender, DataGridViewRowPostPaintEventArgs eventArgs)
+    {
+        if (!_grid.Rows[eventArgs.RowIndex].Selected)
+            return;
+
+        var bounds = eventArgs.RowBounds;
+        bounds.Width = Math.Min(bounds.Width, _grid.ClientSize.Width - bounds.X - 1);
+        bounds.Height = Math.Max(1, bounds.Height - 1);
+        using var pen = new Pen(Theme.Gold, 2f);
+        eventArgs.Graphics.DrawRectangle(pen, bounds);
     }
 
     private void ShowSelectedItem()

@@ -1,7 +1,8 @@
 bin/
 obj/
 .vs/
-publish/
+publish/*
+!publish/BG3-Item-Explorer.exe
 *.user
 *.suo
 BG3-Item-Explorer-progress.json
