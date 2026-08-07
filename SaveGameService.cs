@@ -26,9 +26,11 @@ internal sealed class SaveCharacterSnapshot
     public Dictionary<string, int> Abilities { get; } = new(StringComparer.OrdinalIgnoreCase);
     public List<string> EquippedKeys { get; } = [];
     public List<FeatSelection> Feats { get; } = [];
+    public Dictionary<string, string> FightingStyles { get; } = new(StringComparer.OrdinalIgnoreCase);
     public bool HasAbilityData { get; set; }
     public bool HasEquipmentData { get; set; }
     public bool HasFeatData { get; set; }
+    public bool HasFightingStyleData { get; set; }
 }
 
 internal sealed class SaveImportResult
@@ -232,6 +234,11 @@ internal static class SaveGameService
         if (source.HasFeatData)
         {
             target.Feats = source.Feats.Select(feat => new FeatSelection { Name = feat.Name, Choice = feat.Choice }).ToList();
+            changed = true;
+        }
+        if (source.HasFightingStyleData)
+        {
+            target.FightingStyles = new Dictionary<string, string>(source.FightingStyles, StringComparer.OrdinalIgnoreCase);
             changed = true;
         }
         target.NormalizeClassLevels(!target.Difficulty.Equals("Explorer", StringComparison.OrdinalIgnoreCase));

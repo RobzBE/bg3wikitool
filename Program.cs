@@ -9,7 +9,7 @@ internal static class Program
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        Application.AddMessageFilter(new NumericWheelMessageFilter());
+        Application.AddMessageFilter(new SafeOptionWheelMessageFilter());
         FontManager.Initialize();
         if (arguments.Contains("--lang=nl", StringComparer.OrdinalIgnoreCase))
             Localization.Current = UiLanguage.Dutch;

@@ -27,7 +27,13 @@ internal static class AppDiagnostics
                 character.ClassLevels,
                 character.Subclasses,
                 character.Abilities,
-                character.EquippedKeys
+                character.EquippedKeys,
+                character.Feats,
+                character.FightingStyles,
+                character.HasAbilityData,
+                character.HasEquipmentData,
+                character.HasFeatData,
+                character.HasFightingStyleData
             })
         };
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(reportPath))!);

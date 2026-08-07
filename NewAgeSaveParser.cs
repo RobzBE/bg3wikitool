@@ -46,7 +46,95 @@ internal sealed class NewAgeSaveParser
 
         ApplyAbilities(result, characterOwners);
         ApplyFeats(result, characterOwners);
+        ApplyFightingStyles(result, characterOwners);
         ApplyEquipment(result, characterOwners, catalogue, savedItems);
+    }
+
+    private void ApplyFightingStyles(SaveImportResult result, Dictionary<string, uint> characterOwners)
+    {
+        if (!_components.TryGetValue("game.character_creation.v3.LevelUpComponentData", out var levelDataComponent)
+            || !_components.TryGetValue("game.character_creation.v2.LevelUpComponentSelectors", out var selectorsComponent)
+            || !_components.TryGetValue("game.character_creation.v2.PassiveSelector", out var passiveComponent)
+            || !_components.TryGetValue("game.character_creation.v3.LevelUpComponent", out var levelUpComponent))
+            return;
+        var levelUpElements = ElementByOwner(levelUpComponent);
+        foreach (var character in characterOwners)
+        {
+            var snapshot = FindCharacter(result, character.Key);
+            if (snapshot is null || !levelUpElements.TryGetValue(character.Value, out var levelElement))
+                continue;
+            var lr = Record(levelUpComponent, levelElement);
+            var levelsStart = ReadInt64(lr); var levelsEnd = ReadInt64(lr + 8);
+            if (!ValidRange(levelsStart, levelsEnd, 8))
+                continue;
+
+            var levelRecords = new List<(int Element, Guid ClassId)>();
+            for (var cursor = levelsStart; cursor < levelsEnd; cursor += 8)
+            {
+                var levelPointer = ReadInt64(Relative(cursor));
+                var delta = levelPointer - levelDataComponent.Offset;
+                if (delta < 0 || delta % levelDataComponent.Size != 0)
+                    continue;
+                var dataElement = (int)(delta / levelDataComponent.Size);
+                if (dataElement < 0 || dataElement >= selectorsComponent.Elements)
+                    continue;
+                levelRecords.Add((dataElement, ReadLarianGuid(Record(levelDataComponent, dataElement))));
+            }
+            var distinctClassIds = levelRecords.Select(record => record.ClassId).Where(id => id != Guid.Empty).Distinct().ToList();
+            var classNames = new[] { snapshot.StartingClass }
+                .Concat(snapshot.ClassLevels.Keys.Where(name => !name.Equals(snapshot.StartingClass, StringComparison.OrdinalIgnoreCase)))
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .ToList();
+            if (distinctClassIds.Count != classNames.Count)
+                continue;
+            var classById = distinctClassIds.Select((id, index) => (id, classNames[index])).ToDictionary(pair => pair.id, pair => pair.Item2);
+            var stylesByClass = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var levelRecord in levelRecords)
+            {
+                if (!classById.TryGetValue(levelRecord.ClassId, out var className))
+                    continue;
+                var dataElement = levelRecord.Element;
+                var sr = Record(selectorsComponent, dataElement);
+                var passivesStart = ReadInt64(sr + 80); var passivesEnd = ReadInt64(sr + 88);
+                if (!ValidRange(passivesStart, passivesEnd, 8))
+                    continue;
+                for (var p = passivesStart; p < passivesEnd; p += 8)
+                {
+                    var passivePointer = ReadInt64(Relative(p));
+                    var passiveDelta = passivePointer - passiveComponent.Offset;
+                    if (passiveDelta < 0 || passiveDelta % passiveComponent.Size != 0)
+                        continue;
+                    var passiveElement = (int)(passiveDelta / passiveComponent.Size);
+                    if (passiveElement < 0 || passiveElement >= passiveComponent.Elements)
+                        continue;
+                    var pr = Record(passiveComponent, passiveElement);
+                    var slotsStart = ReadInt64(pr + 24);
+                    var slotsEnd = ReadInt64(pr + 32);
+                    if (!ValidRange(slotsStart, slotsEnd, 16))
+                        continue;
+                    for (var slot = slotsStart; slot < slotsEnd; slot += 16)
+                    {
+                        var textStart = ReadInt64(Relative(slot));
+                        var textLength = ReadInt64(Relative(slot) + 8);
+                        if (textStart < 0 || textLength is <= 0 or > 128 || !ValidRelative(textStart, (int)textLength))
+                            continue;
+                        var passiveName = System.Text.Encoding.UTF8.GetString(_data, Relative(textStart), (int)textLength);
+                        if (!FightingStyleNames.TryGetValue(passiveName, out var fightingStyle))
+                            continue;
+                        if (!stylesByClass.TryGetValue(className, out var styles))
+                            stylesByClass[className] = styles = [];
+                        if (!styles.Contains(fightingStyle, StringComparer.OrdinalIgnoreCase))
+                            styles.Add(fightingStyle);
+                    }
+                }
+            }
+            snapshot.FightingStyles.Clear();
+            foreach (var pair in stylesByClass)
+                for (var index = 0; index < pair.Value.Count; index++)
+                    snapshot.FightingStyles[BuildOptions.FightingStyleSlotKey(pair.Key, index)] = pair.Value[index];
+            snapshot.HasFightingStyleData = true;
+        }
     }
 
     private Dictionary<string, uint> ReadCharacterOwners()
@@ -330,7 +418,8 @@ internal sealed class NewAgeSaveParser
     }
 
     private bool ValidRange(long start, long end, int stride) =>
-        start >= 0 && end >= start && (end - start) % stride == 0 && ValidRelative(start, checked((int)(end - start)));
+        start >= 0 && end >= start && end - start <= int.MaxValue
+        && (end - start) % stride == 0 && ValidRelative(start, (int)(end - start));
     private bool ValidRelative(long offset, int length) => ValidAbsolute(DataBase + offset, length);
     private bool ValidAbsolute(long offset, int length) => offset >= 0 && length >= 0 && offset + length <= _data.LongLength;
     private int ReadInt32(int offset) => BinaryPrimitives.ReadInt32LittleEndian(_data.AsSpan(offset, 4));
@@ -355,6 +444,16 @@ internal sealed class NewAgeSaveParser
 
     private static SaveCharacterSnapshot? FindCharacter(SaveImportResult result, string name) =>
         result.Characters.FirstOrDefault(character => character.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+
+    private static readonly Dictionary<string, string> FightingStyleNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["FightingStyle_Archery"] = "Archery",
+        ["FightingStyle_Defense"] = "Defence",
+        ["FightingStyle_Dueling"] = "Duelling",
+        ["FightingStyle_GreatWeaponFighting"] = "Great Weapon Fighting",
+        ["FightingStyle_Protection"] = "Protection",
+        ["FightingStyle_TwoWeaponFighting"] = "Two-Weapon Fighting"
+    };
 
     private static readonly Dictionary<Guid, string> FeatNames = new()
     {
@@ -401,4 +500,3 @@ internal sealed class NewAgeSaveParser
         [Guid.Parse("b153e75c-27a2-4412-95cd-60b477121679")] = "Weapon Master"
     };
 }
-

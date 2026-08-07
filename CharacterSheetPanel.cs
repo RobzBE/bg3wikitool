@@ -335,17 +335,16 @@ internal sealed class CharacterSheetPanel : UserControl
 
         ConfigureSection(_classFeaturesCaption);
         content.Controls.Add(_classFeaturesCaption);
-        var styles = new TableLayoutPanel { Dock = DockStyle.Top, Height = 92, AutoSize = false, ColumnCount = 2, RowCount = 3, Margin = new Padding(0, 0, 0, 4) };
+        var styles = new TableLayoutPanel { Dock = DockStyle.Top, Height = 122, AutoSize = false, ColumnCount = 2, RowCount = 4, Margin = new Padding(0, 0, 0, 4) };
         styles.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 35));
         styles.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 65));
-        var fightingStyleClasses = new[] { "Fighter", "Paladin", "Ranger" };
-        for (var index = 0; index < fightingStyleClasses.Length; index++)
+        for (var index = 0; index < BuildOptions.FightingStyleSlots.Length; index++)
         {
-            var className = fightingStyleClasses[index];
+            var slot = BuildOptions.FightingStyleSlots[index];
             var combo = new ComboBox();
             ConfigureCombo(combo);
-            _fightingStyles[className] = combo;
-            styles.Controls.Add(Caption(className), 0, index);
+            _fightingStyles[slot.Key] = combo;
+            styles.Controls.Add(Caption(slot.Label), 0, index);
             styles.Controls.Add(combo, 1, index);
         }
         content.Controls.Add(styles);
@@ -738,7 +737,7 @@ internal sealed class CharacterSheetPanel : UserControl
             pair.Value.BeginUpdate();
             pair.Value.Items.Clear();
             pair.Value.Items.Add(BuildOptions.None);
-            pair.Value.Items.AddRange(BuildOptions.FightingStylesByClass[pair.Key]);
+            pair.Value.Items.AddRange(BuildOptions.FightingStyleChoices(pair.Key));
             pair.Value.SelectedItem = pair.Value.Items.Contains(selected) ? selected : BuildOptions.None;
             pair.Value.Enabled = BuildOptions.FightingStyleAvailable(_state, pair.Key);
             pair.Value.EndUpdate();

@@ -34,6 +34,23 @@ internal static class BuildOptions
             ["Ranger"] = ["Archery", "Defence", "Duelling", "Two-Weapon Fighting"]
         };
 
+    public static readonly (string Key, string ClassName, string Label, int MinimumLevel)[] FightingStyleSlots =
+    [
+        ("Fighter", "Fighter", "Fighter", 1),
+        ("Fighter 2", "Fighter", "Fighter (level 10)", 10),
+        ("Paladin", "Paladin", "Paladin", 2),
+        ("Ranger", "Ranger", "Ranger", 2)
+    ];
+
+    public static string FightingStyleSlotKey(string className, int index) =>
+        index == 0 ? className : $"{className} {index + 1}";
+
+    public static string[] FightingStyleChoices(string slotKey)
+    {
+        var slot = FightingStyleSlots.FirstOrDefault(slot => slot.Key.Equals(slotKey, StringComparison.OrdinalIgnoreCase));
+        return FightingStylesByClass.GetValueOrDefault(slot.ClassName ?? slotKey, []);
+    }
+
     public static readonly IReadOnlyDictionary<string, string[]> SubclassesByClass =
         new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
         {
@@ -171,12 +188,11 @@ internal static class BuildOptions
         return Math.Min(4, slots);
     }
 
-    public static bool FightingStyleAvailable(CharacterState state, string className) => className switch
+    public static bool FightingStyleAvailable(CharacterState state, string slotKey)
     {
-        "Fighter" => state.GetClassLevel(className) >= 1,
-        "Paladin" or "Ranger" => state.GetClassLevel(className) >= 2,
-        _ => false
-    };
+        var slot = FightingStyleSlots.FirstOrDefault(slot => slot.Key.Equals(slotKey, StringComparison.OrdinalIgnoreCase));
+        return !string.IsNullOrWhiteSpace(slot.ClassName) && state.GetClassLevel(slot.ClassName) >= slot.MinimumLevel;
+    }
 
     public static FeatDefinition? FindFeat(string name) =>
         Feats.FirstOrDefault(feat => feat.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
