@@ -56,10 +56,21 @@ internal static class AppDiagnostics
                                     && tacticianStats.Threats[0].SpellDc == baselineStats.Threats[0].SpellDc + 2
                                     && explorerStats.Proficiency == baselineStats.Proficiency + 2
                                     && explorerStats.HitPoints == baselineStats.HitPoints * 2;
+        var worstCaseThreatsApplied = baselineStats.Threats[0].AttackEnemy == "Grym"
+                                      && baselineStats.Threats[0].AttackBonus == 11
+                                      && baselineStats.Threats[1].AttackEnemy == "Apostle of Myrkul"
+                                      && baselineStats.Threats[2].AttackEnemy == "Dominated Red Dragon"
+                                      && baselineStats.Threats[2].SpellEnemy == "Netherbrain"
+                                      && baselineStats.Threats[2].SpellDc == 23;
+        var naturalRollBoundsApplied = CharacterCalculator.AttackHitChance(100, 0) == 5
+                                       && CharacterCalculator.AttackHitChance(100, 0, criticalHitImmune: true) == 0
+                                       && CharacterCalculator.AttackHitChance(-100, 0) == 95
+                                       && CharacterCalculator.ApplyRollMode(5, false, true) == 0.25
+                                       && CharacterCalculator.ApplyRollMode(95, true, false) == 99.75;
 
         var report = new
         {
-            Passed = items.Count == 556 && uniqueProgressKeys == items.Count && loadedImages == items.Count && progressRoundTrip && characterRoundTrip && displacementMathApplied && difficultyMathApplied && FontManager.IsAlegreyaLoaded,
+            Passed = items.Count == 556 && uniqueProgressKeys == items.Count && loadedImages == items.Count && progressRoundTrip && characterRoundTrip && displacementMathApplied && difficultyMathApplied && worstCaseThreatsApplied && naturalRollBoundsApplied && FontManager.IsAlegreyaLoaded,
             ItemCount = items.Count,
             ActCounts = items.GroupBy(item => item.Act).ToDictionary(group => group.Key, group => group.Count()),
             UniqueProgressKeys = uniqueProgressKeys,
@@ -72,6 +83,8 @@ internal static class AppDiagnostics
             BaselineAct1AttackChance = baselineStats.Threats[0].AttackHitChance,
             CloakAct1AttackChance = displacedStats.Threats[0].AttackHitChance,
             DifficultyMathApplied = difficultyMathApplied,
+            WorstCaseThreatsApplied = worstCaseThreatsApplied,
+            NaturalRollBoundsApplied = naturalRollBoundsApplied,
             EmbeddedAlegreyaLoaded = FontManager.IsAlegreyaLoaded
         };
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(reportPath))!);

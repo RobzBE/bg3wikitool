@@ -11,7 +11,24 @@ internal sealed record ClassProfile(
     int HpPerLevel,
     string[] ArmourTraining);
 
-internal sealed record ActThreat(string Act, int AttackBonus, int SpellDc, int AttackHitChance, int SpellAttackHitChance, int SpellEffectChance);
+internal sealed record EnemyThreatProfile(
+    string Act,
+    string AttackEnemy,
+    int AttackBonus,
+    string SpellEnemy,
+    int SpellDc);
+
+internal sealed record ActThreat(
+    string Act,
+    string AttackEnemy,
+    int AttackBonus,
+    string SpellEnemy,
+    int SpellAttackBonus,
+    int SpellDc,
+    double AttackHitChance,
+    double SpellAttackHitChance,
+    double SpellEffectChance,
+    string SpellSaveAbility);
 
 internal sealed class CharacterStats
 {
@@ -68,6 +85,37 @@ internal static partial class CharacterCalculator
         ["Gnome"] = 7.5m
     };
 
+    // Worst-case hostile encounter baselines from the BG3 Wiki creature sheets.
+    // Attack bonuses include the creature's ability modifier, proficiency and the
+    // difficulty modifier. Spell attack is derived from the listed casting DC (DC - 8).
+    private static readonly Dictionary<string, EnemyThreatProfile[]> WorstCaseThreats = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Balanced"] =
+        [
+            new("ACT 1", "Grym", 11, "Grym", 19),
+            new("ACT 2", "Apostle of Myrkul", 10, "Apostle of Myrkul", 17),
+            new("ACT 3", "Dominated Red Dragon", 14, "Netherbrain", 23)
+        ],
+        ["Explorer"] =
+        [
+            new("ACT 1", "Grym", 13, "Grym", 21),
+            new("ACT 2", "Apostle of Myrkul", 12, "Apostle of Myrkul", 19),
+            new("ACT 3", "Dominated Red Dragon", 16, "Netherbrain", 25)
+        ],
+        ["Tactician"] =
+        [
+            new("ACT 1", "Grym", 13, "Grym", 21),
+            new("ACT 2", "Apostle of Myrkul", 13, "Apostle of Myrkul", 21),
+            new("ACT 3", "Dominated Red Dragon", 16, "Netherbrain", 25)
+        ],
+        ["Honour"] =
+        [
+            new("ACT 1", "Grym", 13, "Grym", 21),
+            new("ACT 2", "Apostle of Myrkul", 13, "Apostle of Myrkul", 21),
+            new("ACT 3", "Dominated Red Dragon", 16, "Netherbrain", 25)
+        ]
+    };
+
     public static CharacterStats Calculate(CharacterState state, IEnumerable<ItemRecord> allItems)
     {
         var equipped = allItems.Where(item => item.Equipped).ToList();
@@ -116,15 +164,25 @@ internal static partial class CharacterCalculator
         var generalSaveAdvantage = activeEffects.Any(effect => effect.Kind == ItemEffectKind.SavingThrowAdvantage && effect.Scope == "ALL");
         var spellSaveAdvantage = generalSaveAdvantage || activeEffects.Any(effect => effect.Kind == ItemEffectKind.SpellSavingThrowAdvantage);
         var generalSaveDisadvantage = nonProficientGear.Count > 0 || activeEffects.Any(effect => effect.Kind == ItemEffectKind.SavingThrowDisadvantage);
-        var difficultyEnemyBonus = state.Difficulty.Equals("Balanced", StringComparison.OrdinalIgnoreCase) ? 0 : 2;
-        var threats = new[] { ("ACT 1", 4, 12), ("ACT 2", 6, 14), ("ACT 3", 8, 16) }
-            .Select(values => new ActThreat(
-                values.Item1,
-                values.Item2 + difficultyEnemyBonus,
-                values.Item3 + difficultyEnemyBonus,
-                ApplyRollMode(AttackHitChance(armourClass, values.Item2 + difficultyEnemyBonus), false, enemyAttackDisadvantage),
-                ApplyRollMode(AttackHitChance(armourClass, values.Item2 + difficultyEnemyBonus), false, enemySpellAttackDisadvantage),
-                CalculateSpellEffectChance(values.Item3 + difficultyEnemyBonus, saves, activeEffects, spellSaveAdvantage, generalSaveDisadvantage)))
+        var criticalHitImmune = activeEffects.Any(effect => effect.Kind == ItemEffectKind.CriticalHitImmunity);
+        var threatProfiles = WorstCaseThreats.GetValueOrDefault(state.Difficulty, WorstCaseThreats["Balanced"]);
+        var threats = threatProfiles
+            .Select(profile =>
+            {
+                var spellAttackBonus = profile.SpellDc - 8;
+                var spellEffect = CalculateWorstSpellEffectChance(profile.SpellDc, saves, activeEffects, spellSaveAdvantage, generalSaveDisadvantage);
+                return new ActThreat(
+                    profile.Act,
+                    profile.AttackEnemy,
+                    profile.AttackBonus,
+                    profile.SpellEnemy,
+                    spellAttackBonus,
+                    profile.SpellDc,
+                    ApplyRollMode(AttackHitChance(armourClass, profile.AttackBonus, criticalHitImmune), false, enemyAttackDisadvantage),
+                    ApplyRollMode(AttackHitChance(armourClass, spellAttackBonus, criticalHitImmune), false, enemySpellAttackDisadvantage),
+                    spellEffect.Chance,
+                    spellEffect.Ability);
+            })
             .ToList();
 
         return new CharacterStats
@@ -146,7 +204,7 @@ internal static partial class CharacterCalculator
             AttackRollAdvantage = activeEffects.Any(effect => effect.Kind == ItemEffectKind.AttackRollAdvantage),
             AttackRollDisadvantage = nonProficientGear.Count > 0,
             EnemySavingThrowDisadvantage = activeEffects.Any(effect => effect.Kind == ItemEffectKind.EnemySavingThrowDisadvantage),
-            CriticalHitImmune = activeEffects.Any(effect => effect.Kind == ItemEffectKind.CriticalHitImmunity),
+            CriticalHitImmune = criticalHitImmune,
             DamageReduction = activeEffects.Where(effect => effect.Kind == ItemEffectKind.DamageReduction).Sum(effect => effect.Value),
             Resistances = activeEffects.Where(effect => effect.Kind == ItemEffectKind.Resistance).Select(effect => effect.Scope).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(value => value).ToList(),
             NonProficientGear = nonProficientGear
@@ -291,37 +349,40 @@ internal static partial class CharacterCalculator
             .Max();
     }
 
-    private static int AttackHitChance(int armourClass, int attackBonus)
+    internal static double AttackHitChance(int armourClass, int attackBonus, bool criticalHitImmune = false)
     {
         var requiredRoll = armourClass - attackBonus;
-        var successfulFaces = Math.Clamp(21 - requiredRoll, 1, 19);
+        // Natural 1 always misses. Natural 20 always hits unless critical-hit immunity
+        // turns it into a regular roll that still has to meet the target's AC.
+        var minimumSuccessfulFaces = criticalHitImmune ? 0 : 1;
+        var successfulFaces = Math.Clamp(21 - Math.Max(requiredRoll, 2), minimumSuccessfulFaces, 19);
         return successfulFaces * 5;
     }
 
-    private static int SpellEffectChance(int savingThrowBonus, int dc)
+    private static double SpellEffectChance(int savingThrowBonus, int dc)
     {
         var failingFaces = Math.Clamp(dc - savingThrowBonus - 1, 0, 20);
         return failingFaces * 5;
     }
 
-    private static int CalculateSpellEffectChance(
+    private static (double Chance, string Ability) CalculateWorstSpellEffectChance(
         int dc,
         Dictionary<string, int> saves,
         List<ItemEffect> effects,
         bool generalAdvantage,
         bool generalDisadvantage)
     {
-        var probabilities = new List<int>();
+        var probabilities = new List<(double Chance, string Ability)>();
         foreach (var ability in new[] { "DEX", "CON", "WIS" })
         {
             var specificAdvantage = effects.Any(effect => effect.Kind == ItemEffectKind.SavingThrowAdvantage && effect.Scope == ability);
             var normal = SpellEffectChance(saves[ability], dc);
-            probabilities.Add(ApplyRollMode(normal, generalDisadvantage, generalAdvantage || specificAdvantage));
+            probabilities.Add((ApplyRollMode(normal, generalDisadvantage, generalAdvantage || specificAdvantage), ability));
         }
-        return (int)Math.Round(probabilities.Average(), MidpointRounding.AwayFromZero);
+        return probabilities.OrderByDescending(value => value.Chance).First();
     }
 
-    private static int ApplyRollMode(int normalChance, bool advantage, bool disadvantage)
+    internal static double ApplyRollMode(double normalChance, bool advantage, bool disadvantage)
     {
         if (advantage == disadvantage)
             return normalChance;
@@ -329,7 +390,7 @@ internal static partial class CharacterCalculator
         var adjusted = disadvantage
             ? probability * probability
             : 1 - Math.Pow(1 - probability, 2);
-        return (int)Math.Round(adjusted * 100, MidpointRounding.AwayFromZero);
+        return Math.Round(adjusted * 100, 2, MidpointRounding.AwayFromZero);
     }
 
     private static string FullAbilityName(string ability) => ability switch

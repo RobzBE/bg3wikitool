@@ -299,7 +299,7 @@ internal sealed class CharacterSheetPanel : UserControl
         var panel = new Panel
         {
             Width = Math.Max(210, ClientSize.Width - 35),
-            Height = 56,
+            Height = 82,
             BackColor = Color.FromArgb(238, 220, 184),
             Margin = new Padding(0, 0, 0, 4),
             Padding = new Padding(7, 4, 7, 3)
@@ -308,20 +308,32 @@ internal sealed class CharacterSheetPanel : UserControl
         {
             Dock = DockStyle.Top,
             Height = 20,
-            Text = $"{threat.Act}  (+{threat.AttackBonus} / DC {threat.SpellDc})",
+            Text = $"{threat.Act}  —  {Localization.T("WorstCase")}",
             Font = Theme.Body(8.5f, FontStyle.Bold),
             ForeColor = Theme.Crimson
         };
         var values = new Label
         {
             Dock = DockStyle.Fill,
-            Text = Localization.Format("ThreatLine", threat.AttackHitChance, threat.SpellAttackHitChance, threat.SpellEffectChance),
+            Text = Localization.Format(
+                "ThreatLine",
+                FormatChance(threat.AttackHitChance), threat.AttackEnemy, threat.AttackBonus,
+                FormatChance(threat.SpellAttackHitChance), threat.SpellEnemy, threat.SpellAttackBonus,
+                FormatChance(threat.SpellEffectChance), threat.SpellDc, threat.SpellSaveAbility),
             Font = Theme.Body(8f),
             ForeColor = Theme.Ink
         };
         panel.Controls.Add(values);
         panel.Controls.Add(title);
         return panel;
+    }
+
+    private static string FormatChance(double chance)
+    {
+        var culture = Localization.Current == UiLanguage.Dutch
+            ? System.Globalization.CultureInfo.GetCultureInfo("nl-BE")
+            : System.Globalization.CultureInfo.InvariantCulture;
+        return chance.ToString("0.##", culture);
     }
 
     private static Control HighlightCard(string title, Label value)

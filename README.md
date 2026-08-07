@@ -14,7 +14,8 @@ A portable, offline Windows app for the Act 1, Act 2 and Act 3 items in the supp
 - Equip every item independently from its found status; mutually exclusive gear slots are handled automatically and two rings are allowed.
 - Persistent race, class, level, difficulty and level-1 ability scores.
 - Live offense and defense statistics including AC, Spell Save DC, HP, initiative, movement and all six saving throws.
-- Act 1/2/3 baseline enemy success chances for weapon attacks, spell attacks and DEX/CON/WIS spell effects.
+- Worst-case enemy success chances per act for weapon attacks, spell attacks and DEX/CON/WIS spell effects. The benchmark uses Grym (Act 1), the Apostle of Myrkul (Act 2), and the Dominated Red Dragon plus Netherbrain (Act 3), using their highest difficulty-specific attack bonus or casting DC.
+- Attack-roll probabilities preserve the natural-roll rules: 1 always misses and 20 always hits, unless critical-hit immunity turns the natural 20 into a regular roll that can still miss sufficiently high AC. Saving throws do not automatically fail or succeed on a natural 1 or 20.
 - Dynamic item-effect analysis for AC, ability changes, attack/save bonuses, advantage/disadvantage, critical-hit immunity, damage reduction and resistances.
 - Conditional effects can be toggled. For example, Cloak of Displacement automatically applies enemy Disadvantage at the start of a turn and can be disabled after the wearer takes damage.
 - Explorer, Balanced, Tactician and Honour calculations, including Explorer proficiency/HP changes and the Tactician/Honour +2 enemy attack/save-DC modifier.
