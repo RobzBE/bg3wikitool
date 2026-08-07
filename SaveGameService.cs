@@ -18,12 +18,17 @@ internal sealed class SaveCharacterSnapshot
     public string Race { get; set; } = "";
     public string StartingClass { get; set; } = "";
     public string Subclass { get; set; } = "";
+    public string Difficulty { get; set; } = "";
     public int? Level { get; set; }
     public bool IsMulticlass { get; set; }
     public Dictionary<string, int> ClassLevels { get; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, string> Subclasses { get; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, int> Abilities { get; } = new(StringComparer.OrdinalIgnoreCase);
     public List<string> EquippedKeys { get; } = [];
+    public List<FeatSelection> Feats { get; } = [];
+    public bool HasAbilityData { get; set; }
+    public bool HasEquipmentData { get; set; }
+    public bool HasFeatData { get; set; }
 }
 
 internal sealed class SaveImportResult
@@ -38,7 +43,7 @@ internal sealed class SaveImportResult
     public int MatchedItems { get; set; }
 }
 
-internal sealed record SavedItemReference(string StatsId, ulong Flags, string Level, int TemplateType)
+internal sealed record SavedItemReference(string StatsId, ulong Flags, string Level, int TemplateType, Guid? CurrentTemplate)
 {
     private const ulong GlobalFlag = 0x04000000;
 
@@ -190,6 +195,11 @@ internal static class SaveGameService
             target.Level = source.Level.Value;
             changed = true;
         }
+        if (CharacterCalculator.Difficulties.Contains(source.Difficulty, StringComparer.OrdinalIgnoreCase))
+        {
+            target.Difficulty = CharacterCalculator.Difficulties.First(value => value.Equals(source.Difficulty, StringComparison.OrdinalIgnoreCase));
+            changed = true;
+        }
         if (source.ClassLevels.Count > 0 && source.ClassLevels.Values.Sum() is >= 1 and <= 12)
         {
             target.ClassLevels = source.ClassLevels.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
@@ -212,9 +222,16 @@ internal static class SaveGameService
             target.SetAbility(pair.Key, pair.Value);
             changed = true;
         }
-        if (source.EquippedKeys.Count > 0)
+        if (source.HasAbilityData)
+            target.ImportedCurrentAbilities = true;
+        if (source.HasEquipmentData)
         {
             target.EquippedKeys = source.EquippedKeys.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            changed = true;
+        }
+        if (source.HasFeatData)
+        {
+            target.Feats = source.Feats.Select(feat => new FeatSelection { Name = feat.Name, Choice = feat.Choice }).ToList();
             changed = true;
         }
         target.NormalizeClassLevels(!target.Difficulty.Equals("Explorer", StringComparison.OrdinalIgnoreCase));
@@ -248,6 +265,7 @@ internal static class SaveGameService
         try
         {
             using var document = JsonDocument.Parse(json);
+            var difficulty = ParseDifficulty(FindFirstProperty(document.RootElement, "Difficulty"));
             var partyLevel = FindFirstInteger(document.RootElement, "PartyLevel", "Level");
             var party = FindFirstProperty(document.RootElement, "Active Party") ?? FindFirstProperty(document.RootElement, "Party");
             var partyCharacters = party is { ValueKind: JsonValueKind.Object }
@@ -258,6 +276,7 @@ internal static class SaveGameService
                 foreach (var member in partyCharacters.Value.EnumerateArray().Take(4))
                 {
                     var snapshot = SnapshotFromJson(member, partyLevel);
+                    snapshot.Difficulty = difficulty;
                     if (!string.IsNullOrWhiteSpace(snapshot.Name))
                         result.Characters.Add(snapshot);
                 }
@@ -265,6 +284,7 @@ internal static class SaveGameService
             if (result.Characters.Count == 0)
             {
                 var snapshot = SnapshotFromJson(document.RootElement, partyLevel);
+                snapshot.Difficulty = difficulty;
                 if (!string.IsNullOrWhiteSpace(snapshot.Name) || snapshot.Level.HasValue)
                     result.Characters.Add(snapshot);
             }
@@ -280,7 +300,7 @@ internal static class SaveGameService
         var snapshot = new SaveCharacterSnapshot
         {
             Name = FindFirstString(element, "Name", "PlayerName", "CharacterName", "Origin") ?? "",
-            Race = CanonicalMatch(FindFirstString(element, "Race", "RaceName"), CharacterCalculator.Races),
+            Race = CanonicalRace(FindFirstString(element, "Race", "RaceName")),
             StartingClass = CanonicalMatch(FindFirstString(element, "Class", "ClassName", "Class Type"), CharacterCalculator.Classes),
             Subclass = FindFirstString(element, "Subclass", "SubclassName") ?? "",
             Level = FindFirstInteger(element, "Level", "CharacterLevel") ?? fallbackLevel
@@ -409,8 +429,12 @@ internal static class SaveGameService
             if (itemLookup.TryGetValue(savedItem.StatsId, out var item))
                 result.PresentKeys.Add(item.ProgressKey);
         }
-        result.MatchedPresentItems = result.PresentKeys.Count;
         result.MatchedItems = 0;
+        if (resource.Regions.TryGetValue("NewAge", out var newAgeRegion)
+            && newAgeRegion.Attributes.TryGetValue("NewAge", out var newAgeAttribute)
+            && newAgeAttribute.Value is byte[] newAge)
+            NewAgeSaveParser.Apply(newAge, result, items, savedItems);
+        result.MatchedPresentItems = result.PresentKeys.Count;
         if (savedItems.Count > 0 && result.MatchedPresentItems == 0)
             result.Warnings.Add("Saved item identifiers were found, but none matched this item catalogue.");
     }
@@ -439,7 +463,9 @@ internal static class SaveGameService
         {
             TryUnsignedInteger(AttributeValue(node, "Flags"), out var flags);
             TryInteger(AttributeValue(node, "CurrentTemplateType"), out var templateType);
-            items.Add(new SavedItemReference(stats.Trim(), flags, AttributeValue(node, "Level")?.ToString() ?? "", templateType));
+            var templateText = AttributeValue(node, "CurrentTemplate")?.ToString();
+            var currentTemplate = Guid.TryParse(templateText, out var parsedTemplate) ? parsedTemplate : (Guid?)null;
+            items.Add(new SavedItemReference(stats.Trim(), flags, AttributeValue(node, "Level")?.ToString() ?? "", templateType, currentTemplate));
         }
         foreach (var children in node.Children.Values)
             foreach (var child in children)
@@ -500,6 +526,37 @@ internal static class SaveGameService
 
     private static string CanonicalMatch(string? value, string[] choices) =>
         choices.FirstOrDefault(choice => choice.Equals(value, StringComparison.OrdinalIgnoreCase)) ?? "";
+
+    private static string CanonicalRace(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+        var normalized = NormalizeToken(value);
+        if (normalized.StartsWith("halfelf", StringComparison.Ordinal)) return "Half-Elf";
+        if (normalized.StartsWith("halforc", StringComparison.Ordinal)) return "Half-Orc";
+        if (normalized.StartsWith("tiefling", StringComparison.Ordinal)) return "Tiefling";
+        if (normalized.StartsWith("dragonborn", StringComparison.Ordinal)) return "Dragonborn";
+        if (normalized.StartsWith("drow", StringComparison.Ordinal)) return "Drow";
+        if (normalized.StartsWith("elf", StringComparison.Ordinal)) return "Elf";
+        if (normalized.StartsWith("halfling", StringComparison.Ordinal)) return "Halfling";
+        if (normalized.StartsWith("dwarf", StringComparison.Ordinal)) return "Dwarf";
+        if (normalized.StartsWith("gnome", StringComparison.Ordinal)) return "Gnome";
+        return CharacterCalculator.Races.FirstOrDefault(choice => NormalizeToken(choice) == normalized) ?? "";
+    }
+
+    private static string ParseDifficulty(JsonElement? value)
+    {
+        var tokens = new List<string>();
+        if (value is { ValueKind: JsonValueKind.String })
+            tokens.Add(value.Value.GetString() ?? "");
+        else if (value is { ValueKind: JsonValueKind.Array })
+            tokens.AddRange(value.Value.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String).Select(item => item.GetString() ?? ""));
+        if (tokens.Any(token => token.Contains("Honour", StringComparison.OrdinalIgnoreCase))) return "Honour";
+        if (tokens.Any(token => token.Equals("DifficultyHard", StringComparison.OrdinalIgnoreCase))) return "Tactician";
+        if (tokens.Any(token => token.Equals("DifficultyEasy", StringComparison.OrdinalIgnoreCase))) return "Explorer";
+        if (tokens.Any(token => token.Equals("DifficultyMedium", StringComparison.OrdinalIgnoreCase))) return "Balanced";
+        return "";
+    }
 
     private static string CanonicalSubclass(string className, string? value)
     {

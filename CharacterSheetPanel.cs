@@ -15,7 +15,7 @@ internal sealed class CharacterSheetPanel : UserControl
     private readonly ComboBox _class = new();
     private readonly ComboBox _subclass = new();
     private readonly ComboBox _difficulty = new();
-    private readonly NumericUpDown _level = new();
+    private readonly NumericUpDown _level = new WheelSafeNumericUpDown();
     private readonly Dictionary<string, NumericUpDown> _abilities = [];
     private readonly Dictionary<string, NumericUpDown> _classLevels = [];
     private readonly Dictionary<string, ComboBox> _multiclassSubclasses = [];
@@ -271,7 +271,7 @@ internal sealed class CharacterSheetPanel : UserControl
         for (var index = 0; index < CharacterCalculator.Classes.Length; index++)
         {
             var className = CharacterCalculator.Classes[index];
-            var box = new NumericUpDown
+            var box = new WheelSafeNumericUpDown
             {
                 Minimum = 0,
                 Maximum = 12,
@@ -600,6 +600,7 @@ internal sealed class CharacterSheetPanel : UserControl
     {
         if (_updating)
             return;
+        var abilitiesChanged = _abilities.Any(pair => _state.GetAbility(pair.Key) != (int)pair.Value.Value);
         _state.Race = _race.SelectedItem as string ?? "Human";
         _state.ClassName = _class.SelectedItem as string ?? "Fighter";
         _state.Difficulty = _difficulty.SelectedItem as string ?? "Balanced";
@@ -621,6 +622,8 @@ internal sealed class CharacterSheetPanel : UserControl
         }
         foreach (var pair in _abilities)
             _state.SetAbility(pair.Key, (int)pair.Value.Value);
+        if (abilitiesChanged)
+            _state.ImportedCurrentAbilities = false;
         foreach (var pair in _fightingStyles)
         {
             var style = pair.Value.SelectedItem as string;
@@ -633,7 +636,7 @@ internal sealed class CharacterSheetPanel : UserControl
             .Select(slot => new FeatSelection
             {
                 Name = slot.Feat.SelectedItem as string ?? "",
-                Choice = slot.Choice.SelectedItem as string ?? ""
+                Choice = slot.Choice.SelectedItem as string is { } choice && choice != "—" ? choice : ""
             }).ToList();
         _featSummary.Text = Localization.Format("FeatSlots", featSlotCount);
         RefreshBuildOptionControls();
@@ -864,7 +867,11 @@ internal sealed class CharacterSheetPanel : UserControl
         if (definition is null || definition.Choices.Length == 0)
             slot.Choice.Items.Add("—");
         else
+        {
+            if (string.IsNullOrWhiteSpace(previous))
+                slot.Choice.Items.Add("—");
             slot.Choice.Items.AddRange(definition.Choices);
+        }
         slot.Choice.SelectedItem = slot.Choice.Items.Contains(previous) ? previous : slot.Choice.Items[0];
         slot.Choice.EndUpdate();
         slot.Choice.Enabled = slot.Feat.Enabled && definition?.Choices.Length > 0;

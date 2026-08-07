@@ -180,9 +180,14 @@ internal static partial class CharacterCalculator
         activeEffects.AddRange(PermanentBonusEffects(state));
         var startingProfile = Profiles.GetValueOrDefault(state.ClassName, Profiles["Fighter"]);
         var abilities = AbilityNames.ToDictionary(name => name, state.GetAbility, StringComparer.OrdinalIgnoreCase);
-        ApplyFeatAbilityChanges(state, abilities);
-        ApplyPermanentAbilityChanges(state, abilities);
-        ApplyEquipmentAbilityChanges(abilities, equipped);
+        // Patch 8 saves expose already-calculated current scores. Do not apply
+        // feat, permanent and equipment ability changes a second time after import.
+        if (!state.ImportedCurrentAbilities)
+        {
+            ApplyFeatAbilityChanges(state, abilities);
+            ApplyPermanentAbilityChanges(state, abilities);
+            ApplyEquipmentAbilityChanges(abilities, equipped);
+        }
         var buildWarnings = ValidateBuildOptions(state, abilities, equipped, startingProfile);
         var nonProficientGear = equipped.Where(item => !IsArmourProficient(state, startingProfile, item)).Select(item => item.Name).ToList();
 

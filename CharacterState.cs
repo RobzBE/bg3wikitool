@@ -17,6 +17,7 @@ internal sealed class CharacterState
     public int Intelligence { get; set; } = 10;
     public int Wisdom { get; set; } = 10;
     public int Charisma { get; set; } = 10;
+    public bool ImportedCurrentAbilities { get; set; }
     public List<string> EquippedKeys { get; set; } = [];
     public List<string> DisabledConditionalEffects { get; set; } = [];
     public List<string> EnabledConditionalEffects { get; set; } = [];
