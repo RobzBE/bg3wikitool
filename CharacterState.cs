@@ -16,6 +16,9 @@ internal sealed class CharacterState
     public List<string> EquippedKeys { get; set; } = [];
     public List<string> DisabledConditionalEffects { get; set; } = [];
     public List<string> EnabledConditionalEffects { get; set; } = [];
+    public Dictionary<string, string> FightingStyles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public List<FeatSelection> Feats { get; set; } = [];
+    public List<string> ActiveBuffs { get; set; } = [];
 
     public int TotalLevel
     {
@@ -85,7 +88,20 @@ internal sealed class CharacterState
             .Where(pair => pair.Value > 0)
             .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
         Level = ClassLevels.Values.Sum();
+        FightingStyles ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        Feats ??= [];
+        ActiveBuffs ??= [];
+        ActiveBuffs = ActiveBuffs.Where(name => BuildOptions.FindBuff(name) is not null).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var slots = BuildOptions.FeatSlotCount(this);
+        if (Feats.Count > slots)
+            Feats.RemoveRange(slots, Feats.Count - slots);
     }
+
+    public bool HasFeat(string featName) =>
+        Feats?.Any(feat => feat.Name.Equals(featName, StringComparison.OrdinalIgnoreCase)) == true;
+
+    public bool HasBuff(string buffName) =>
+        ActiveBuffs?.Contains(buffName, StringComparer.OrdinalIgnoreCase) == true;
 
     public bool IsEffectActive(ItemEffect effect)
     {

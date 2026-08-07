@@ -9,9 +9,9 @@ public sealed class MainForm : Form
     private readonly BindingSource _gridSource = new();
     private readonly ProgressStore _progressStore = new();
     private readonly ItemImageRepository _imageRepository = new();
-    private readonly SplitContainer _mainSplit = new();
-    private readonly SplitContainer _contentCharacterSplit = new();
-    private readonly SplitContainer _rightSplit = new();
+    private readonly SafeSplitContainer _mainSplit = new();
+    private readonly SafeSplitContainer _contentCharacterSplit = new();
+    private readonly SafeSplitContainer _rightSplit = new();
     private readonly Panel _headerPanel = new();
     private readonly Panel _footerPanel = new();
     private readonly TextBox _searchBox = new();
@@ -33,7 +33,6 @@ public sealed class MainForm : Form
     private readonly PictureBox _itemPicture = new();
     private readonly CharacterState _characterState;
     private readonly CharacterSheetPanel _characterSheet;
-    private bool _resizingSplit;
     private bool _applyingLanguage;
 
     public MainForm(List<ItemRecord> items)
@@ -77,7 +76,6 @@ public sealed class MainForm : Form
 
     public void RenderPreview(string path)
     {
-        MaintainMainSplitRatio();
         PerformLayout();
         _mainSplit.PerformLayout();
         _rightSplit.PerformLayout();
@@ -223,6 +221,7 @@ public sealed class MainForm : Form
         _mainSplit.SplitterWidth = 5;
         Controls.Add(_mainSplit);
         LayoutContentArea();
+        _mainSplit.SplitterDistance = Math.Clamp((int)(_mainSplit.Width * 0.20), 250, 360);
 
         BuildFilterPanel(_mainSplit.Panel1);
         BuildRightPanel(_mainSplit.Panel2);
@@ -502,6 +501,8 @@ public sealed class MainForm : Form
         _contentCharacterSplit.SplitterWidth = 5;
         _contentCharacterSplit.BackColor = Theme.Gold;
         host.Controls.Add(_contentCharacterSplit);
+        if (_contentCharacterSplit.Width > 850)
+            _contentCharacterSplit.SplitterDistance = Math.Clamp((int)(_contentCharacterSplit.Width * 0.75), 600, _contentCharacterSplit.Width - 225);
 
         _rightSplit.Dock = DockStyle.Fill;
         _rightSplit.Orientation = Orientation.Horizontal;
@@ -509,6 +510,8 @@ public sealed class MainForm : Form
         _rightSplit.BackColor = Theme.Gold;
         _contentCharacterSplit.Panel1.Controls.Add(_rightSplit);
         _contentCharacterSplit.Panel2.Controls.Add(_characterSheet);
+        if (_rightSplit.Height >= 600)
+            _rightSplit.SplitterDistance = Math.Clamp((int)(_rightSplit.Height * 0.65), 360, _rightSplit.Height - 200);
 
         BuildGrid(_rightSplit.Panel1);
         BuildDetails(_rightSplit.Panel2);
@@ -820,39 +823,16 @@ public sealed class MainForm : Form
         Resize += (_, _) =>
         {
             LayoutContentArea();
-            MaintainMainSplitRatio();
         };
         Shown += (_, _) =>
         {
             LayoutContentArea();
-            MaintainMainSplitRatio();
         };
         FormClosed += (_, _) =>
         {
             _itemPicture.Image?.Dispose();
             _imageRepository.Dispose();
         };
-    }
-
-    private void MaintainMainSplitRatio()
-    {
-        if (_resizingSplit || _mainSplit.Width < 1000)
-            return;
-        try
-        {
-            _resizingSplit = true;
-            _mainSplit.SplitterDistance = Math.Clamp((int)(_mainSplit.Width * 0.20), 250, 360);
-            if (_contentCharacterSplit.Width > 850)
-            {
-                var maximum = _contentCharacterSplit.Width - 220 - _contentCharacterSplit.SplitterWidth;
-                _contentCharacterSplit.SplitterDistance = Math.Clamp((int)(_contentCharacterSplit.Width * 0.75), 600, maximum);
-            }
-            _rightSplit.SplitterDistance = Math.Clamp((int)(_rightSplit.Height * 0.65), 360, _rightSplit.Height - 200);
-        }
-        finally
-        {
-            _resizingSplit = false;
-        }
     }
 
     private void LayoutContentArea()

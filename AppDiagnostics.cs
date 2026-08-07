@@ -33,7 +33,10 @@ internal static class AppDiagnostics
                 Difficulty = "Tactician",
                 Level = 7,
                 Intelligence = 18,
-                ClassLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Fighter"] = 2, ["Wizard"] = 5 }
+                ClassLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Fighter"] = 2, ["Wizard"] = 5 },
+                FightingStyles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Fighter"] = "Defence" },
+                Feats = [new FeatSelection { Name = "Ability Improvement", Choice = "INT +2" }],
+                ActiveBuffs = ["Mage Armour"]
             };
             store.Save(items, testCharacter);
             var loadedState = store.LoadState();
@@ -44,7 +47,10 @@ internal static class AppDiagnostics
                                  && loadedState.Character.Level == 7
                                  && loadedState.Character.Intelligence == 18
                                  && loadedState.Character.GetClassLevel("Fighter") == 2
-                                 && loadedState.Character.GetClassLevel("Wizard") == 5;
+                                 && loadedState.Character.GetClassLevel("Wizard") == 5
+                                 && loadedState.Character.FightingStyles.GetValueOrDefault("Fighter") == "Defence"
+                                 && loadedState.Character.Feats.Any(feat => feat.Name == "Ability Improvement" && feat.Choice == "INT +2")
+                                 && loadedState.Character.HasBuff("Mage Armour");
             items[0].Found = false;
         }
         finally
@@ -135,9 +141,56 @@ internal static class AppDiagnostics
                                     && wizardFighterStats.NonProficientGear.Contains(heavyArmour.Name)
                                     && !fighterWizardStats.NonProficientGear.Contains(heavyArmour.Name);
 
+        var alertState = new CharacterState
+        {
+            ClassName = "Fighter",
+            Level = 4,
+            ClassLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Fighter"] = 4 },
+            Feats = [new FeatSelection { Name = "Alert" }]
+        };
+        var alertStats = CharacterCalculator.Calculate(alertState, items);
+        var toughState = new CharacterState
+        {
+            ClassName = "Fighter",
+            Level = 4,
+            ClassLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Fighter"] = 4 },
+            Feats = [new FeatSelection { Name = "Tough" }]
+        };
+        var toughStats = CharacterCalculator.Calculate(toughState, items);
+        var mageArmourState = new CharacterState
+        {
+            ClassName = "Wizard",
+            Level = 1,
+            Dexterity = 14,
+            ClassLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Wizard"] = 1 },
+            ActiveBuffs = ["Mage Armour"]
+        };
+        var mageArmourStats = CharacterCalculator.Calculate(mageArmourState, items);
+        var blessState = new CharacterState { ActiveBuffs = ["Bless"] };
+        var blessStats = CharacterCalculator.Calculate(blessState, items);
+        var mirrorStats = CharacterCalculator.Calculate(new CharacterState { ActiveBuffs = ["Mirror Image (3 images)"] }, items);
+        var sanctuaryStats = CharacterCalculator.Calculate(new CharacterState { ActiveBuffs = ["Sanctuary"] }, items);
+        var resistanceStats = CharacterCalculator.Calculate(new CharacterState { ActiveBuffs = ["Resistance"] }, items);
+        var featAndBuffMathApplied = BuildOptions.Feats.Length == 41
+                                     && BuildOptions.FeatSlotCount(new CharacterState
+                                     {
+                                         ClassName = "Fighter",
+                                         Level = 10,
+                                         ClassLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Fighter"] = 6, ["Wizard"] = 4 }
+                                     }) == 3
+                                     && alertStats.Initiative == 7
+                                     && toughStats.HitPoints == 44
+                                     && mageArmourStats.ArmourClass == 15
+                                     && blessStats.SavingThrowBonusDie == 4
+                                     && blessStats.Threats[0].SpellEffectChance < baselineStats.Threats[0].SpellEffectChance
+                                     && mirrorStats.ArmourClass == baselineStats.ArmourClass + 9
+                                     && sanctuaryStats.Threats.All(threat => threat.AttackHitChance == 0 && threat.SpellAttackHitChance == 0)
+                                     && resistanceStats.AttackBonusDie == 0
+                                     && resistanceStats.SavingThrowBonusDie == 4;
+
         var report = new
         {
-            Passed = items.Count == 556 && uniqueProgressKeys == items.Count && loadedImages == items.Count && progressRoundTrip && characterRoundTrip && displacementMathApplied && difficultyMathApplied && worstCaseThreatsApplied && naturalRollBoundsApplied && multiclassMathApplied && FontManager.IsAlegreyaLoaded,
+            Passed = items.Count == 556 && uniqueProgressKeys == items.Count && loadedImages == items.Count && progressRoundTrip && characterRoundTrip && displacementMathApplied && difficultyMathApplied && worstCaseThreatsApplied && naturalRollBoundsApplied && multiclassMathApplied && featAndBuffMathApplied && FontManager.IsAlegreyaLoaded,
             ItemCount = items.Count,
             ActCounts = items.GroupBy(item => item.Act).ToDictionary(group => group.Key, group => group.Count()),
             UniqueProgressKeys = uniqueProgressKeys,
@@ -153,6 +206,7 @@ internal static class AppDiagnostics
             WorstCaseThreatsApplied = worstCaseThreatsApplied,
             NaturalRollBoundsApplied = naturalRollBoundsApplied,
             MulticlassMathApplied = multiclassMathApplied,
+            FeatAndBuffMathApplied = featAndBuffMathApplied,
             EmbeddedAlegreyaLoaded = FontManager.IsAlegreyaLoaded
         };
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(reportPath))!);

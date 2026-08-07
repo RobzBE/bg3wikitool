@@ -25,7 +25,6 @@ internal static class Program
             {
                 using var previewForm = new MainForm(items);
                 previewForm.Show();
-                Application.DoEvents();
                 previewForm.RenderPreview(arguments[1]);
                 previewForm.Close();
                 return;
@@ -35,7 +34,6 @@ internal static class Program
                 Localization.Current = UiLanguage.Dutch;
                 using var previewForm = new MainForm(items);
                 previewForm.Show();
-                Application.DoEvents();
                 previewForm.RenderPreview(arguments[1]);
                 previewForm.Close();
                 return;

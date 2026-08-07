@@ -69,6 +69,8 @@ internal static class Localization
         ["LoadError"] = ("BG3 Item Explorer encountered an unexpected error.\n\n{0}\n\nDiagnostic log: {1}", "BG3 Item Explorer kreeg een onverwachte fout.\n\n{0}\n\nDiagnostisch logboek: {1}"),
         ["WarningTitle"] = ("BG3 Item Explorer", "BG3 Item Explorer"),
         ["CharacterSheet"] = ("CHARACTER SHEET", "CHARACTER SHEET"),
+        ["StatsTab"] = ("STATS", "STATS"),
+        ["BuildTab"] = ("BUILD", "BUILD"),
         ["Identity"] = ("BUILD", "BUILD"),
         ["Race"] = ("Race", "Ras"),
         ["Class"] = ("Class", "Klasse"),
@@ -76,6 +78,10 @@ internal static class Localization
         ["StartClass"] = ("Starting class", "Startklasse"),
         ["TotalLevel"] = ("Total level", "Totaal level"),
         ["ClassLevels"] = ("CLASS LEVELS (MAX 12)", "CLASS LEVELS (MAX. 12)"),
+        ["ClassFeatures"] = ("CLASS FEATURES & FIGHTING STYLES", "CLASS FEATURES & FIGHTING STYLES"),
+        ["Feats"] = ("FEATS", "FEATS"),
+        ["FeatSlots"] = ("Available feat slots: {0}. Fighters also gain one at class level 6; Rogues at 10.", "Beschikbare feat-slots: {0}. Fighters krijgen er ook één op class level 6; Rogues op 10."),
+        ["ActiveSpellsConditions"] = ("ACTIVE SPELLS & CONDITIONS  ([C] = CONCENTRATION)", "ACTIEVE SPELLS & CONDITIONS  ([C] = CONCENTRATION)"),
         ["ClassLevelSummary"] = ("Total: {0}/{1}. Starting class determines saving-throw proficiencies.", "Totaal: {0}/{1}. De startklasse bepaalt saving-throw proficiencies."),
         ["ExplorerMulticlassDisabled"] = ("Explorer disables multiclassing.", "Explorer schakelt multiclassing uit."),
         ["Difficulty"] = ("Difficulty", "Moeilijkheid"),
@@ -101,6 +107,9 @@ internal static class Localization
         ["DamageReduction"] = ("damage reduction {0}", "damage reduction {0}"),
         ["Resistances"] = ("resistance: {0}", "resistance: {0}"),
         ["NonProficientGear"] = ("not proficient: {0} (attack rolls and saves: DIS; spellcasting blocked)", "niet proficient: {0} (attack rolls en saves: DIS; spellcasting geblokkeerd)")
+        , ["UnmetRequirements"] = ("{0} unmet requirement(s)", "{0} onvervulde voorwaarde(n)")
+        , ["UnmetRequirementsTitle"] = ("INACTIVE / UNMET CONDITIONS", "INACTIEF / ONVERVULDE VOORWAARDEN")
+        , ["AllRequirementsMet"] = ("All selected effects meet their currently modelled conditions.", "Alle geselecteerde effecten voldoen aan hun gemodelleerde voorwaarden.")
     };
 
     public static string T(string key) =>

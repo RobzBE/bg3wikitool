@@ -16,8 +16,10 @@ internal sealed record EnemyThreatProfile(
     string Act,
     string AttackEnemy,
     int AttackBonus,
+    string AttackCreatureType,
     string SpellEnemy,
-    int SpellDc);
+    int SpellDc,
+    string SpellCreatureType);
 
 internal sealed record ActThreat(
     string Act,
@@ -55,6 +57,9 @@ internal sealed class CharacterStats
     public int DamageReduction { get; init; }
     public List<string> Resistances { get; init; } = [];
     public List<string> NonProficientGear { get; init; } = [];
+    public List<string> BuildWarnings { get; init; } = [];
+    public int AttackBonusDie { get; init; }
+    public int SavingThrowBonusDie { get; init; }
 }
 
 internal static partial class CharacterCalculator
@@ -94,27 +99,27 @@ internal static partial class CharacterCalculator
     {
         ["Balanced"] =
         [
-            new("ACT 1", "Grym", 11, "Grym", 19),
-            new("ACT 2", "Apostle of Myrkul", 10, "Apostle of Myrkul", 17),
-            new("ACT 3", "Dominated Red Dragon", 14, "Netherbrain", 23)
+            new("ACT 1", "Grym", 11, "Construct", "Grym", 19, "Construct"),
+            new("ACT 2", "Apostle of Myrkul", 10, "Undead", "Apostle of Myrkul", 17, "Undead"),
+            new("ACT 3", "Dominated Red Dragon", 14, "Dragon", "Netherbrain", 23, "Aberration")
         ],
         ["Explorer"] =
         [
-            new("ACT 1", "Grym", 13, "Grym", 21),
-            new("ACT 2", "Apostle of Myrkul", 12, "Apostle of Myrkul", 19),
-            new("ACT 3", "Dominated Red Dragon", 16, "Netherbrain", 25)
+            new("ACT 1", "Grym", 13, "Construct", "Grym", 21, "Construct"),
+            new("ACT 2", "Apostle of Myrkul", 12, "Undead", "Apostle of Myrkul", 19, "Undead"),
+            new("ACT 3", "Dominated Red Dragon", 16, "Dragon", "Netherbrain", 25, "Aberration")
         ],
         ["Tactician"] =
         [
-            new("ACT 1", "Grym", 13, "Grym", 21),
-            new("ACT 2", "Apostle of Myrkul", 13, "Apostle of Myrkul", 21),
-            new("ACT 3", "Dominated Red Dragon", 16, "Netherbrain", 25)
+            new("ACT 1", "Grym", 13, "Construct", "Grym", 21, "Construct"),
+            new("ACT 2", "Apostle of Myrkul", 13, "Undead", "Apostle of Myrkul", 21, "Undead"),
+            new("ACT 3", "Dominated Red Dragon", 16, "Dragon", "Netherbrain", 25, "Aberration")
         ],
         ["Honour"] =
         [
-            new("ACT 1", "Grym", 13, "Grym", 21),
-            new("ACT 2", "Apostle of Myrkul", 13, "Apostle of Myrkul", 21),
-            new("ACT 3", "Dominated Red Dragon", 16, "Netherbrain", 25)
+            new("ACT 1", "Grym", 13, "Construct", "Grym", 21, "Construct"),
+            new("ACT 2", "Apostle of Myrkul", 13, "Undead", "Apostle of Myrkul", 21, "Undead"),
+            new("ACT 3", "Dominated Red Dragon", 16, "Dragon", "Netherbrain", 25, "Aberration")
         ]
     };
 
@@ -126,9 +131,11 @@ internal static partial class CharacterCalculator
         var parsedEffects = ItemEffectParser.ParseEquipped(equipped);
         var activeEffects = parsedEffects.Where(state.IsEffectActive).ToList();
         var startingProfile = Profiles.GetValueOrDefault(state.ClassName, Profiles["Fighter"]);
-        var nonProficientGear = equipped.Where(item => !IsArmourProficient(state, startingProfile, item)).Select(item => item.Name).ToList();
         var abilities = AbilityNames.ToDictionary(name => name, state.GetAbility, StringComparer.OrdinalIgnoreCase);
+        ApplyFeatAbilityChanges(state, abilities);
         ApplyEquipmentAbilityChanges(abilities, equipped);
+        var buildWarnings = ValidateBuildOptions(state, abilities, equipped, startingProfile);
+        var nonProficientGear = equipped.Where(item => !IsArmourProficient(state, startingProfile, item)).Select(item => item.Name).ToList();
 
         var spellClass = state.ClassLevels.Keys
             .Where(Profiles.ContainsKey)
@@ -140,7 +147,7 @@ internal static partial class CharacterCalculator
         var proficiency = (totalLevel <= 4 ? 2 : totalLevel <= 8 ? 3 : 4)
                           + (state.Difficulty.Equals("Explorer", StringComparison.OrdinalIgnoreCase) ? 2 : 0);
         var dexterityModifier = Modifier(abilities["DEX"]);
-        var armourClass = CalculateArmourClass(state, abilities, equipped, activeEffects);
+        var armourClass = CalculateArmourClass(state, abilities, equipped, activeEffects, proficiency, buildWarnings);
         var spellBonus = activeEffects.Where(effect => effect.Kind == ItemEffectKind.SpellSaveDcBonus).Sum(effect => effect.Value);
         var spellAttackBonus = activeEffects.Where(effect => effect.Kind == ItemEffectKind.SpellAttackBonus).Sum(effect => effect.Value);
         var spellSaveDc = 8 + proficiency + Modifier(abilities[spellProfile.SpellAbility]) + spellBonus;
@@ -150,6 +157,18 @@ internal static partial class CharacterCalculator
         var weaponAttack = proficiency + Modifier(abilities[attackAbility]) + ExtractWeaponEnchantment(equipped)
                            + activeEffects.Where(effect => effect.Kind == ItemEffectKind.AttackRollBonus).Sum(effect => effect.Value);
         var mainHand = equipped.FirstOrDefault(item => GearRules.SlotFor(item) == "Main Hand");
+        var rangedWeapon = IsRangedWeapon(mainHand);
+        var twoHandedWeapon = IsTwoHandedWeapon(mainHand);
+        var styles = state.FightingStyles.Values.Where(style => !string.IsNullOrWhiteSpace(style)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (styles.Contains("Archery", StringComparer.OrdinalIgnoreCase) && rangedWeapon)
+            weaponAttack += 2;
+        if (state.HasBuff("Magic Weapon +1")) weaponAttack += 1;
+        if (state.HasBuff("Magic Weapon +2")) weaponAttack += 2;
+        if (state.HasBuff("Magic Weapon +3")) weaponAttack += 3;
+        if (state.HasBuff("Great Weapon Master: All In") && state.HasFeat("Great Weapon Master") && twoHandedWeapon)
+            weaponAttack -= 5;
+        if (state.HasBuff("Sharpshooter: All In") && state.HasFeat("Sharpshooter") && rangedWeapon)
+            weaponAttack -= 5;
         if (mainHand?.Description.Contains("Double your Proficiency Bonus", StringComparison.OrdinalIgnoreCase) == true && nonProficientGear.Count == 0)
             weaponAttack += proficiency;
         var constitutionModifier = Modifier(abilities["CON"]);
@@ -160,33 +179,54 @@ internal static partial class CharacterCalculator
             hitPoints += Math.Max(0, addedLevels) * (Profiles[className].HpPerLevel + constitutionModifier);
         }
         hitPoints = Math.Max(totalLevel, hitPoints);
+        if (state.HasFeat("Tough")) hitPoints += totalLevel * 2;
+        if (state.HasBuff("Heroes' Feast")) hitPoints += 12;
+        hitPoints += ActiveAidBonus(state);
         if (state.Difficulty.Equals("Explorer", StringComparison.OrdinalIgnoreCase))
             hitPoints *= 2;
-        var initiative = dexterityModifier + activeEffects.Where(effect => effect.Kind == ItemEffectKind.InitiativeBonus).Sum(effect => effect.Value);
+        var initiative = dexterityModifier + activeEffects.Where(effect => effect.Kind == ItemEffectKind.InitiativeBonus).Sum(effect => effect.Value)
+                         + (state.HasFeat("Alert") ? 5 : 0);
+        if (state.GetClassLevel("Bard") >= 2)
+            initiative += proficiency / 2;
 
-        var generalSaveBonus = activeEffects.Where(effect => effect.Kind == ItemEffectKind.SavingThrowBonus && effect.Scope == "ALL").Sum(effect => effect.Value);
+        var generalSaveBonus = activeEffects.Where(effect => effect.Kind == ItemEffectKind.SavingThrowBonus && effect.Scope == "ALL").Sum(effect => effect.Value)
+                               + (state.HasBuff("Warding Bond") ? 1 : 0);
+        if (state.GetClassLevel("Paladin") >= 6 && state.HasBuff("Paladin Aura active"))
+            generalSaveBonus += Math.Max(0, Modifier(abilities["CHA"]));
         var saves = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (var ability in AbilityNames)
         {
             var value = Modifier(abilities[ability]) + generalSaveBonus;
             if (ability == startingProfile.SaveOne || ability == startingProfile.SaveTwo)
                 value += proficiency;
+            if (state.Feats.Any(feat => feat.Name.Equals("Resilient", StringComparison.OrdinalIgnoreCase) && feat.Choice.Equals(ability, StringComparison.OrdinalIgnoreCase))
+                && ability != startingProfile.SaveOne && ability != startingProfile.SaveTwo)
+                value += proficiency;
+            if (ability == "DEX" && HasShieldEquipped(equipped) && state.HasFeat("Shield Master"))
+                value += 2;
             value += activeEffects.Where(effect => effect.Kind == ItemEffectKind.SavingThrowBonus && effect.Scope == ability).Sum(effect => effect.Value);
             saves[ability] = value;
         }
 
-        var enemyAttackDisadvantage = activeEffects.Any(effect => effect.Kind == ItemEffectKind.EnemyAttackDisadvantage);
+        var enemyAttackDisadvantage = activeEffects.Any(effect => effect.Kind == ItemEffectKind.EnemyAttackDisadvantage)
+                                      || state.HasBuff("Blur") || state.HasBuff("Greater Invisibility") || state.HasBuff("Invisibility")
+                                      || (state.HasBuff("Patient Defence") && state.GetClassLevel("Monk") >= 2);
+        var enemyAttackAdvantage = state.HasBuff("Reckless Attack") && state.GetClassLevel("Barbarian") >= 2;
         var enemySpellAttackDisadvantage = enemyAttackDisadvantage || activeEffects.Any(effect => effect.Kind == ItemEffectKind.EnemySpellAttackDisadvantage);
         var generalSaveAdvantage = activeEffects.Any(effect => effect.Kind == ItemEffectKind.SavingThrowAdvantage && effect.Scope == "ALL");
         var spellSaveAdvantage = generalSaveAdvantage || activeEffects.Any(effect => effect.Kind == ItemEffectKind.SpellSavingThrowAdvantage);
         var generalSaveDisadvantage = nonProficientGear.Count > 0 || activeEffects.Any(effect => effect.Kind == ItemEffectKind.SavingThrowDisadvantage);
         var criticalHitImmune = activeEffects.Any(effect => effect.Kind == ItemEffectKind.CriticalHitImmunity);
         var threatProfiles = WorstCaseThreats.GetValueOrDefault(state.Difficulty, WorstCaseThreats["Balanced"]);
+        var savingThrowDie = state.HasBuff("Bless") || state.HasBuff("Resistance") ? 4 : 0;
+        var sanctuary = state.HasBuff("Sanctuary");
         var threats = threatProfiles
             .Select(profile =>
             {
                 var spellAttackBonus = profile.SpellDc - 8;
-                var spellEffect = CalculateWorstSpellEffectChance(profile.SpellDc, saves, activeEffects, spellSaveAdvantage, generalSaveDisadvantage);
+                var protectedAttack = state.HasBuff("Protection from Evil and Good") && IsProtectedCreatureType(profile.AttackCreatureType);
+                var protectedSpellAttack = state.HasBuff("Protection from Evil and Good") && IsProtectedCreatureType(profile.SpellCreatureType);
+                var spellEffect = CalculateWorstSpellEffectChance(state, profile.SpellDc, saves, activeEffects, spellSaveAdvantage, generalSaveDisadvantage, savingThrowDie);
                 return new ActThreat(
                     profile.Act,
                     profile.AttackEnemy,
@@ -194,8 +234,8 @@ internal static partial class CharacterCalculator
                     profile.SpellEnemy,
                     spellAttackBonus,
                     profile.SpellDc,
-                    ApplyRollMode(AttackHitChance(armourClass, profile.AttackBonus, criticalHitImmune), false, enemyAttackDisadvantage),
-                    ApplyRollMode(AttackHitChance(armourClass, spellAttackBonus, criticalHitImmune), false, enemySpellAttackDisadvantage),
+                    sanctuary ? 0 : ApplyRollMode(AttackHitChance(armourClass, profile.AttackBonus, criticalHitImmune), enemyAttackAdvantage, enemyAttackDisadvantage || protectedAttack),
+                    sanctuary ? 0 : ApplyRollMode(AttackHitChance(armourClass, spellAttackBonus, criticalHitImmune), enemyAttackAdvantage, enemySpellAttackDisadvantage || protectedSpellAttack),
                     spellEffect.Chance,
                     spellEffect.Ability);
             })
@@ -212,35 +252,55 @@ internal static partial class CharacterCalculator
             WeaponAttack = weaponAttack,
             HitPoints = hitPoints,
             Initiative = initiative,
-            Movement = RaceMovement.GetValueOrDefault(state.Race, 9m),
+            Movement = CalculateMovement(state, equipped),
             SpellAbility = spellProfile.SpellAbility,
             SpellClass = spellClass,
             AttackAbility = attackAbility,
             Threats = threats,
             ActiveEffects = activeEffects,
-            AttackRollAdvantage = activeEffects.Any(effect => effect.Kind == ItemEffectKind.AttackRollAdvantage),
+            AttackRollAdvantage = activeEffects.Any(effect => effect.Kind == ItemEffectKind.AttackRollAdvantage)
+                                  || state.HasBuff("Lucky: attack advantage") || state.HasBuff("Greater Invisibility")
+                                  || (state.HasBuff("Reckless Attack") && state.GetClassLevel("Barbarian") >= 2),
             AttackRollDisadvantage = nonProficientGear.Count > 0,
             EnemySavingThrowDisadvantage = activeEffects.Any(effect => effect.Kind == ItemEffectKind.EnemySavingThrowDisadvantage),
             CriticalHitImmune = criticalHitImmune,
-            DamageReduction = activeEffects.Where(effect => effect.Kind == ItemEffectKind.DamageReduction).Sum(effect => effect.Value),
-            Resistances = activeEffects.Where(effect => effect.Kind == ItemEffectKind.Resistance).Select(effect => effect.Scope).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(value => value).ToList(),
-            NonProficientGear = nonProficientGear
+            DamageReduction = activeEffects.Where(effect => effect.Kind == ItemEffectKind.DamageReduction).Sum(effect => effect.Value)
+                              + (state.HasFeat("Heavy Armour Master") && IsWearingArmourCategory(equipped, "Heavy") ? 3 : 0),
+            Resistances = activeEffects.Where(effect => effect.Kind == ItemEffectKind.Resistance).Select(effect => effect.Scope)
+                .Concat(state.HasBuff("Warding Bond") ? ["All"] : Array.Empty<string>())
+                .Concat((state.HasBuff("Blade Ward") || state.HasBuff("Stoneskin")) ? ["Bludgeoning", "Piercing", "Slashing"] : Array.Empty<string>())
+                .Concat(ProtectionFromEnergyResistances(state))
+                .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(value => value).ToList(),
+            NonProficientGear = nonProficientGear,
+            BuildWarnings = buildWarnings,
+            AttackBonusDie = state.HasBuff("Bless") ? 4 : 0,
+            SavingThrowBonusDie = savingThrowDie
         };
     }
 
     public static int Modifier(int score) => (int)Math.Floor((score - 10) / 2.0);
 
-    private static int CalculateArmourClass(CharacterState state, Dictionary<string, int> abilities, List<ItemRecord> equipped, List<ItemEffect> activeEffects)
+    private static int CalculateArmourClass(
+        CharacterState state,
+        Dictionary<string, int> abilities,
+        List<ItemRecord> equipped,
+        List<ItemEffect> activeEffects,
+        int proficiency,
+        List<string> warnings)
     {
         var dex = Modifier(abilities["DEX"]);
         var body = equipped.FirstOrDefault(item => GearRules.SlotFor(item) == "Body");
+        var wearingArmour = IsWearingAnyArmour(equipped);
+        var shield = HasShieldEquipped(equipped);
         int baseAc;
         if (body is null || body.Type.Equals("Clothing", StringComparison.OrdinalIgnoreCase))
         {
             baseAc = 10 + dex;
-            if (state.HasClass("Barbarian"))
+            if (state.HasBuff("Mage Armour") && !wearingArmour)
+                baseAc = Math.Max(baseAc, 13 + dex);
+            if (state.HasClass("Barbarian") && !wearingArmour)
                 baseAc = Math.Max(baseAc, 10 + dex + Modifier(abilities["CON"]));
-            if (state.HasClass("Monk") && !equipped.Any(item => item.Type.Equals("Shield", StringComparison.OrdinalIgnoreCase)))
+            if (state.HasClass("Monk") && !wearingArmour && !shield)
                 baseAc = Math.Max(baseAc, 10 + dex + Modifier(abilities["WIS"]));
         }
         else
@@ -249,14 +309,56 @@ internal static partial class CharacterCalculator
             if (body.Type.Contains("Heavy", StringComparison.OrdinalIgnoreCase))
                 baseAc = listedAc;
             else if (body.Type.Contains("Medium", StringComparison.OrdinalIgnoreCase))
-                baseAc = listedAc + (body.Description.Contains("Dexterity Modifier", StringComparison.OrdinalIgnoreCase) ? dex : Math.Min(2, dex));
+            {
+                var cap = state.HasFeat("Medium Armour Master") ? 3 : 2;
+                baseAc = listedAc + (body.Description.Contains("Dexterity Modifier", StringComparison.OrdinalIgnoreCase) ? dex : Math.Min(cap, dex));
+            }
             else
                 baseAc = listedAc + dex;
         }
 
-        return baseAc
-               + equipped.Sum(item => ExtractAcBonus(item.Properties))
-               + activeEffects.Where(effect => effect.Kind == ItemEffectKind.ArmourClassBonus).Sum(effect => effect.Value);
+        var ac = baseAc
+                 + equipped.Sum(item => ExtractAcBonus(item.Properties))
+                 + activeEffects.Where(effect => effect.Kind == ItemEffectKind.ArmourClassBonus).Sum(effect => effect.Value);
+        if (state.FightingStyles.Values.Contains("Defence", StringComparer.OrdinalIgnoreCase) && wearingArmour) ac += 1;
+        if (state.HasBuff("Shield")) ac += 5;
+        if (state.HasBuff("Shield of Faith")) ac += 2;
+        if (state.HasBuff("Haste")) ac += 2;
+        if (state.HasBuff("Warding Bond")) ac += 1;
+        if (state.HasBuff("Mirror Image (3 images)")) ac += 9;
+        else if (state.HasBuff("Mirror Image (2 images)")) ac += 6;
+        else if (state.HasBuff("Mirror Image (1 image)")) ac += 3;
+        if (state.HasBuff("Defensive Duellist reaction") && state.HasFeat("Defensive Duellist")
+            && abilities["DEX"] >= 13 && IsFinesseWeapon(equipped.FirstOrDefault(item => GearRules.SlotFor(item) == "Main Hand")))
+            ac += proficiency;
+        if (state.HasFeat("Dual Wielder") && HasTwoMeleeWeapons(equipped)) ac += 1;
+        if (state.HasBuff("Barkskin")) ac = Math.Max(ac, 16);
+        if (state.HasBuff("Mage Armour") && wearingArmour)
+            warnings.Add("Mage Armour inactive: Armour is equipped.");
+        return ac;
+    }
+
+    private static void ApplyFeatAbilityChanges(CharacterState state, Dictionary<string, int> abilities)
+    {
+        foreach (var feat in state.Feats.Take(BuildOptions.FeatSlotCount(state)))
+        {
+            if (string.IsNullOrWhiteSpace(feat.Name))
+                continue;
+            if (feat.Name.Equals("Ability Improvement", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (Match match in Regex.Matches(feat.Choice, @"\b(STR|DEX|CON|INT|WIS|CHA)\s*\+(1|2)\b", RegexOptions.IgnoreCase))
+                {
+                    var ability = match.Groups[1].Value.ToUpperInvariant();
+                    abilities[ability] = Math.Min(20, abilities[ability] + int.Parse(match.Groups[2].Value));
+                }
+            }
+            else if (new[] { "Actor", "Athlete", "Durable", "Heavily Armoured", "Heavy Armour Master", "Lightly Armoured", "Moderately Armoured", "Performer", "Resilient", "Tavern Brawler", "Weapon Master" }
+                     .Contains(feat.Name, StringComparer.OrdinalIgnoreCase)
+                     && AbilityNames.Contains(feat.Choice, StringComparer.OrdinalIgnoreCase))
+            {
+                abilities[feat.Choice] = Math.Min(20, abilities[feat.Choice] + 1);
+            }
+        }
     }
 
     private static void ApplyEquipmentAbilityChanges(Dictionary<string, int> abilities, List<ItemRecord> equipped)
@@ -300,6 +402,128 @@ internal static partial class CharacterCalculator
         return "STR";
     }
 
+    private static List<string> ValidateBuildOptions(CharacterState state, Dictionary<string, int> abilities, List<ItemRecord> equipped, ClassProfile startingProfile)
+    {
+        var warnings = new List<string>();
+        if (state.Feats.Count > BuildOptions.FeatSlotCount(state))
+            warnings.Add("Too many feats for the selected class levels.");
+        foreach (var duplicate in state.Feats.Where(feat => !feat.Name.Equals("Ability Improvement", StringComparison.OrdinalIgnoreCase))
+                     .GroupBy(feat => feat.Name, StringComparer.OrdinalIgnoreCase).Where(group => !string.IsNullOrWhiteSpace(group.Key) && group.Count() > 1))
+            warnings.Add($"{duplicate.Key} can only be selected once.");
+        foreach (var duplicate in state.FightingStyles.Values.Where(style => !string.IsNullOrWhiteSpace(style))
+                     .GroupBy(style => style, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1))
+            warnings.Add($"Fighting Style: {duplicate.Key} can only be learned once.");
+
+        if (state.HasFeat("Defensive Duellist") && abilities["DEX"] < 13)
+            warnings.Add("Defensive Duellist requires Dexterity 13.");
+        var trainingAtSelection = GetArmourTraining(state, startingProfile, includeFeats: false);
+        foreach (var feat in state.Feats)
+        {
+            if (feat.Name.Equals("Lightly Armoured", StringComparison.OrdinalIgnoreCase))
+                trainingAtSelection.Add("Light");
+            else if (feat.Name.Equals("Moderately Armoured", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!trainingAtSelection.Contains("Light")) warnings.Add("Moderately Armoured requires Light Armour proficiency when selected.");
+                trainingAtSelection.UnionWith(["Medium", "Shield"]);
+            }
+            else if (feat.Name.Equals("Heavily Armoured", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!trainingAtSelection.Contains("Medium")) warnings.Add("Heavily Armoured requires Medium Armour proficiency when selected.");
+                trainingAtSelection.Add("Heavy");
+            }
+            else if (feat.Name.Equals("Medium Armour Master", StringComparison.OrdinalIgnoreCase) && !trainingAtSelection.Contains("Medium"))
+                warnings.Add("Medium Armour Master requires Medium Armour proficiency when selected.");
+            else if (feat.Name.Equals("Heavy Armour Master", StringComparison.OrdinalIgnoreCase) && !trainingAtSelection.Contains("Heavy"))
+                warnings.Add("Heavy Armour Master requires Heavy Armour proficiency when selected.");
+        }
+
+        var activeConcentration = state.ActiveBuffs.Select(BuildOptions.FindBuff).Where(buff => buff?.Concentration == true).ToList();
+        if (activeConcentration.Count > 1)
+            warnings.Add("Only one Concentration spell can be active at a time.");
+        if (state.HasBuff("Defensive Duellist reaction") && (!state.HasFeat("Defensive Duellist") || abilities["DEX"] < 13 || !IsFinesseWeapon(equipped.FirstOrDefault(item => GearRules.SlotFor(item) == "Main Hand"))))
+            warnings.Add("Defensive Duellist reaction inactive: feat, Dexterity 13 and a finesse weapon are required.");
+        if (state.HasBuff("Great Weapon Master: All In") && (!state.HasFeat("Great Weapon Master") || !IsTwoHandedWeapon(equipped.FirstOrDefault(item => GearRules.SlotFor(item) == "Main Hand"))))
+            warnings.Add("Great Weapon Master: All In inactive: feat and qualifying two-handed melee weapon required.");
+        if (state.HasBuff("Sharpshooter: All In") && (!state.HasFeat("Sharpshooter") || !IsRangedWeapon(equipped.FirstOrDefault(item => GearRules.SlotFor(item) == "Main Hand"))))
+            warnings.Add("Sharpshooter: All In inactive: feat and ranged weapon required.");
+        if (state.HasBuff("Rage") && (state.GetClassLevel("Barbarian") < 1 || IsWearingArmourCategory(equipped, "Heavy")))
+            warnings.Add("Rage inactive: Barbarian level and no Heavy Armour required.");
+        if (state.HasBuff("Reckless Attack") && state.GetClassLevel("Barbarian") < 2)
+            warnings.Add("Reckless Attack inactive: Barbarian level 2 required.");
+        if (state.HasBuff("Patient Defence") && state.GetClassLevel("Monk") < 2)
+            warnings.Add("Patient Defence inactive: Monk level 2 and Ki required.");
+        if (state.HasBuff("Danger Sense") && state.GetClassLevel("Barbarian") < 2)
+            warnings.Add("Danger Sense inactive: Barbarian level 2 required.");
+        if (state.HasBuff("Indomitable") && state.GetClassLevel("Fighter") < 9)
+            warnings.Add("Indomitable inactive: Fighter level 9 required.");
+        if (state.HasBuff("Paladin Aura active") && state.GetClassLevel("Paladin") < 6)
+            warnings.Add("Aura of Protection inactive: Paladin level 6 required.");
+        return warnings;
+    }
+
+    private static decimal CalculateMovement(CharacterState state, List<ItemRecord> equipped)
+    {
+        var movement = RaceMovement.GetValueOrDefault(state.Race, 9m);
+        if (state.HasFeat("Mobile")) movement += 3m;
+        if (state.HasBuff("Longstrider")) movement += 3m;
+        if (state.HasBuff("Haste")) movement += 9m;
+        if (state.GetClassLevel("Barbarian") >= 5 && !IsWearingArmourCategory(equipped, "Heavy")) movement += 3m;
+        if (state.GetClassLevel("Monk") >= 2 && !IsWearingAnyArmour(equipped) && !HasShieldEquipped(equipped))
+            movement += state.GetClassLevel("Monk") >= 10 ? 6m : state.GetClassLevel("Monk") >= 6 ? 4.5m : 3m;
+        return movement;
+    }
+
+    private static int ActiveAidBonus(CharacterState state)
+    {
+        for (var level = 6; level >= 2; level--)
+            if (state.HasBuff($"Aid (level {level})"))
+                return (level - 1) * 5;
+        return 0;
+    }
+
+    private static bool IsProtectedCreatureType(string creatureType) =>
+        new[] { "Aberration", "Celestial", "Elemental", "Fey", "Fiend", "Undead" }.Contains(creatureType, StringComparer.OrdinalIgnoreCase);
+
+    private static IEnumerable<string> ProtectionFromEnergyResistances(CharacterState state) =>
+        state.ActiveBuffs.Where(value => value.StartsWith("Protection from Energy: ", StringComparison.OrdinalIgnoreCase))
+            .Select(value => value["Protection from Energy: ".Length..]);
+
+    private static bool IsRangedWeapon(ItemRecord? item) => item is not null
+        && (item.Type.Contains("Bow", StringComparison.OrdinalIgnoreCase) || item.Type.Contains("Crossbow", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsTwoHandedWeapon(ItemRecord? item) => item is not null && !IsRangedWeapon(item)
+        && (item.Properties.Contains("Two-Handed", StringComparison.OrdinalIgnoreCase)
+            || item.Properties.Contains("Versatile", StringComparison.OrdinalIgnoreCase)
+            || new[] { "Greatsword", "Greataxe", "Maul", "Halberd", "Glaive", "Pike" }.Contains(item.Type, StringComparer.OrdinalIgnoreCase));
+
+    private static bool IsFinesseWeapon(ItemRecord? item) => item is not null
+        && (item.Properties.Contains("Finesse", StringComparison.OrdinalIgnoreCase)
+            || new[] { "Dagger", "Shortsword", "Scimitar", "Rapier" }.Contains(item.Type, StringComparer.OrdinalIgnoreCase));
+
+    private static bool HasShieldEquipped(List<ItemRecord> equipped) =>
+        equipped.Any(item => item.Type.Equals("Shield", StringComparison.OrdinalIgnoreCase));
+
+    private static bool HasTwoMeleeWeapons(List<ItemRecord> equipped)
+    {
+        var weapons = equipped.Where(item => !IsRangedWeapon(item) && GearRules.SlotFor(item) is "Main Hand" or "Off Hand" && !item.Type.Equals("Shield", StringComparison.OrdinalIgnoreCase)).ToList();
+        return weapons.Count >= 2;
+    }
+
+    private static bool IsWearingAnyArmour(List<ItemRecord> equipped) =>
+        equipped.Any(item => ArmourCategory(item) is "Light" or "Medium" or "Heavy");
+
+    private static bool IsWearingArmourCategory(List<ItemRecord> equipped, string category) =>
+        equipped.Any(item => ArmourCategory(item).Equals(category, StringComparison.OrdinalIgnoreCase));
+
+    private static string ArmourCategory(ItemRecord item)
+    {
+        var text = item.Type + " " + item.Properties;
+        if (text.Contains("Heavy Armour", StringComparison.OrdinalIgnoreCase)) return "Heavy";
+        if (text.Contains("Medium Armour", StringComparison.OrdinalIgnoreCase)) return "Medium";
+        if (text.Contains("Light Armour", StringComparison.OrdinalIgnoreCase)) return "Light";
+        return "";
+    }
+
     private static bool IsArmourProficient(CharacterState state, ClassProfile startingProfile, ItemRecord item)
     {
         string? required = null;
@@ -309,9 +533,7 @@ internal static partial class CharacterCalculator
         else if (item.Type.Contains("Light", StringComparison.OrdinalIgnoreCase)) required = "Light";
         if (required is null)
             return true;
-        var training = new HashSet<string>(startingProfile.ArmourTraining, StringComparer.OrdinalIgnoreCase);
-        foreach (var className in state.ClassLevels.Keys.Where(className => !className.Equals(state.ClassName, StringComparison.OrdinalIgnoreCase) && Profiles.ContainsKey(className)))
-            training.UnionWith(Profiles[className].MulticlassArmourTraining);
+        var training = GetArmourTraining(state, startingProfile, includeFeats: true);
         if (training.Contains(required))
             return true;
         if (state.Race.Equals("Human", StringComparison.OrdinalIgnoreCase) && required is "Light" or "Shield")
@@ -319,6 +541,20 @@ internal static partial class CharacterCalculator
         if (state.Race.Equals("Githyanki", StringComparison.OrdinalIgnoreCase) && required is "Light" or "Medium")
             return true;
         return false;
+    }
+
+    private static HashSet<string> GetArmourTraining(CharacterState state, ClassProfile startingProfile, bool includeFeats)
+    {
+        var training = new HashSet<string>(startingProfile.ArmourTraining, StringComparer.OrdinalIgnoreCase);
+        foreach (var className in state.ClassLevels.Keys.Where(className => !className.Equals(state.ClassName, StringComparison.OrdinalIgnoreCase) && Profiles.ContainsKey(className)))
+            training.UnionWith(Profiles[className].MulticlassArmourTraining);
+        if (state.Race.Equals("Human", StringComparison.OrdinalIgnoreCase)) training.UnionWith(["Light", "Shield"]);
+        if (state.Race.Equals("Githyanki", StringComparison.OrdinalIgnoreCase)) training.UnionWith(["Light", "Medium"]);
+        if (!includeFeats) return training;
+        if (state.HasFeat("Lightly Armoured")) training.Add("Light");
+        if (state.HasFeat("Moderately Armoured")) training.UnionWith(["Medium", "Shield"]);
+        if (state.HasFeat("Heavily Armoured")) training.Add("Heavy");
+        return training;
     }
 
     private static int ExtractListedAc(string text)
@@ -379,25 +615,46 @@ internal static partial class CharacterCalculator
         return successfulFaces * 5;
     }
 
-    private static double SpellEffectChance(int savingThrowBonus, int dc)
+    private static double SpellEffectChance(int savingThrowBonus, int dc, int bonusDie, bool advantage, bool disadvantage)
     {
-        var failingFaces = Math.Clamp(dc - savingThrowBonus - 1, 0, 20);
-        return failingFaces * 5;
+        var fails = 0;
+        var total = 0;
+        var dieFaces = bonusDie > 0 ? bonusDie : 1;
+        for (var first = 1; first <= 20; first++)
+        for (var second = 1; second <= 20; second++)
+        for (var bonus = 1; bonus <= dieFaces; bonus++)
+        {
+            var roll = advantage == disadvantage ? first : advantage ? Math.Max(first, second) : Math.Min(first, second);
+            if (advantage == disadvantage && second != 1)
+                continue;
+            var bonusValue = bonusDie > 0 ? bonus : 0;
+            var succeeds = roll == 20 || (roll != 1 && roll + savingThrowBonus + bonusValue >= dc);
+            if (!succeeds) fails++;
+            total++;
+        }
+        return Math.Round(fails * 100.0 / total, 2, MidpointRounding.AwayFromZero);
     }
 
     private static (double Chance, string Ability) CalculateWorstSpellEffectChance(
+        CharacterState state,
         int dc,
         Dictionary<string, int> saves,
         List<ItemEffect> effects,
         bool generalAdvantage,
-        bool generalDisadvantage)
+        bool generalDisadvantage,
+        int bonusDie)
     {
         var probabilities = new List<(double Chance, string Ability)>();
         foreach (var ability in new[] { "DEX", "CON", "WIS" })
         {
             var specificAdvantage = effects.Any(effect => effect.Kind == ItemEffectKind.SavingThrowAdvantage && effect.Scope == ability);
-            var normal = SpellEffectChance(saves[ability], dc);
-            probabilities.Add((ApplyRollMode(normal, generalDisadvantage, generalAdvantage || specificAdvantage), ability));
+            if (ability == "DEX" && state.HasBuff("Haste")) specificAdvantage = true;
+            if (ability == "DEX" && state.HasBuff("Danger Sense") && state.GetClassLevel("Barbarian") >= 2) specificAdvantage = true;
+            if (ability == "WIS" && state.HasBuff("Heroes' Feast")) specificAdvantage = true;
+            var chance = SpellEffectChance(saves[ability], dc, bonusDie, generalAdvantage || specificAdvantage, generalDisadvantage);
+            if (state.HasBuff("Indomitable") && state.GetClassLevel("Fighter") >= 9)
+                chance = Math.Round(chance * chance / 100.0, 2, MidpointRounding.AwayFromZero);
+            probabilities.Add((chance, ability));
         }
         return probabilities.OrderByDescending(value => value.Chance).First();
     }
