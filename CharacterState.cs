@@ -2,6 +2,7 @@ namespace BG3ItemExplorer;
 
 internal sealed class CharacterState
 {
+    public string TemplateId { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "Character";
     public string Race { get; set; } = "Human";
     public string ClassName { get; set; } = "Fighter";
@@ -20,6 +21,7 @@ internal sealed class CharacterState
     public Dictionary<string, string> FightingStyles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public List<FeatSelection> Feats { get; set; } = [];
     public List<string> ActiveBuffs { get; set; } = [];
+    public List<PermanentBonusSelection> PermanentBonuses { get; set; } = [];
 
     public int TotalLevel
     {
@@ -91,8 +93,25 @@ internal sealed class CharacterState
         Level = ClassLevels.Values.Sum();
         FightingStyles ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         Feats ??= [];
+        EquippedKeys ??= [];
+        DisabledConditionalEffects ??= [];
+        EnabledConditionalEffects ??= [];
         ActiveBuffs ??= [];
         ActiveBuffs = ActiveBuffs.Where(name => BuildOptions.FindBuff(name) is not null).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        PermanentBonuses ??= [];
+        PermanentBonuses = PermanentBonuses
+            .Where(selection => PermanentBonusCatalog.Find(selection.Name) is not null)
+            .GroupBy(selection => selection.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
+        foreach (var selection in PermanentBonuses)
+        {
+            var definition = PermanentBonusCatalog.Find(selection.Name)!;
+            if (definition.Choices.Length > 0 && !definition.Choices.Contains(selection.Choice, StringComparer.OrdinalIgnoreCase))
+                selection.Choice = definition.Choices[0];
+        }
+        if (string.IsNullOrWhiteSpace(TemplateId))
+            TemplateId = Guid.NewGuid().ToString("N");
         var slots = BuildOptions.FeatSlotCount(this);
         if (Feats.Count > slots)
             Feats.RemoveRange(slots, Feats.Count - slots);
@@ -103,6 +122,12 @@ internal sealed class CharacterState
 
     public bool HasBuff(string buffName) =>
         ActiveBuffs?.Contains(buffName, StringComparer.OrdinalIgnoreCase) == true;
+
+    public bool HasPermanentBonus(string bonusName) =>
+        PermanentBonuses?.Any(bonus => bonus.Name.Equals(bonusName, StringComparison.OrdinalIgnoreCase)) == true;
+
+    public string PermanentBonusChoice(string bonusName) =>
+        PermanentBonuses?.FirstOrDefault(bonus => bonus.Name.Equals(bonusName, StringComparison.OrdinalIgnoreCase))?.Choice ?? "";
 
     public bool IsEffectActive(ItemEffect effect)
     {

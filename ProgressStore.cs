@@ -87,7 +87,7 @@ internal sealed class ProgressStore
             characters[index] ??= new CharacterState();
             if (string.IsNullOrWhiteSpace(characters[index].Name) || characters[index].Name.Equals("Character", StringComparison.OrdinalIgnoreCase))
                 characters[index].Name = $"Character {index + 1}";
-            characters[index].EquippedKeys ??= [];
+            characters[index].NormalizeClassLevels(!characters[index].Difficulty.Equals("Explorer", StringComparison.OrdinalIgnoreCase));
         }
     }
 }

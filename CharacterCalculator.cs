@@ -61,6 +61,9 @@ internal sealed class CharacterStats
     public List<string> BuildWarnings { get; init; } = [];
     public int AttackBonusDie { get; init; }
     public int SavingThrowBonusDie { get; init; }
+    public int AttackBonusD4Count { get; init; }
+    public int SavingThrowBonusD4Count { get; init; }
+    public int TemporaryHitPoints { get; init; }
     public int CriticalThreshold { get; init; } = 20;
     public int SpellCriticalThreshold { get; init; } = 20;
     public string ArmourClassBreakdown { get; init; } = "";
@@ -154,9 +157,11 @@ internal static partial class CharacterCalculator
         var equipped = allItems.Where(item => item.Equipped).ToList();
         var parsedEffects = ItemEffectParser.ParseEquipped(equipped);
         var activeEffects = parsedEffects.Where(state.IsEffectActive).ToList();
+        activeEffects.AddRange(PermanentBonusEffects(state));
         var startingProfile = Profiles.GetValueOrDefault(state.ClassName, Profiles["Fighter"]);
         var abilities = AbilityNames.ToDictionary(name => name, state.GetAbility, StringComparer.OrdinalIgnoreCase);
         ApplyFeatAbilityChanges(state, abilities);
+        ApplyPermanentAbilityChanges(state, abilities);
         ApplyEquipmentAbilityChanges(abilities, equipped);
         var buildWarnings = ValidateBuildOptions(state, abilities, equipped, startingProfile);
         var nonProficientGear = equipped.Where(item => !IsArmourProficient(state, startingProfile, item)).Select(item => item.Name).ToList();
@@ -282,7 +287,9 @@ internal static partial class CharacterCalculator
         var criticalHitImmune = activeEffects.Any(effect => effect.Kind == ItemEffectKind.CriticalHitImmunity);
         var threatProfiles = WorstCaseThreats.GetValueOrDefault(state.Difficulty, WorstCaseThreats["Balanced"]);
         var averageProfiles = AverageThreats.GetValueOrDefault(state.Difficulty, AverageThreats["Balanced"]);
-        var savingThrowDie = state.HasBuff("Bless") || state.HasBuff("Resistance") ? 4 : 0;
+        var sweetStone = state.HasPermanentBonus("Sweet Stone Features");
+        var attackBonusD4Count = (state.HasBuff("Bless") ? 1 : 0) + (sweetStone ? 1 : 0);
+        var savingThrowBonusD4Count = (state.HasBuff("Bless") || state.HasBuff("Resistance") ? 1 : 0) + (sweetStone ? 1 : 0);
         var sanctuary = state.HasBuff("Sanctuary");
         var threats = threatProfiles
             .SelectMany((profile, index) => new[] { (Benchmark: "WorstCase", Profile: profile), (Benchmark: "Average", Profile: averageProfiles[index]) })
@@ -292,7 +299,7 @@ internal static partial class CharacterCalculator
                 var spellAttackBonus = profile.SpellDc - 8;
                 var protectedAttack = state.HasBuff("Protection from Evil and Good") && IsProtectedCreatureType(profile.AttackCreatureType);
                 var protectedSpellAttack = state.HasBuff("Protection from Evil and Good") && IsProtectedCreatureType(profile.SpellCreatureType);
-                var spellEffect = CalculateWorstSpellEffectChance(state, profile.SpellDc, saves, activeEffects, spellSaveAdvantage, generalSaveDisadvantage, savingThrowDie);
+                var spellEffect = CalculateWorstSpellEffectChance(state, profile.SpellDc, saves, activeEffects, spellSaveAdvantage, generalSaveDisadvantage, savingThrowBonusD4Count);
                 return new ActThreat(
                     profile.Act,
                     entry.Benchmark,
@@ -328,7 +335,8 @@ internal static partial class CharacterCalculator
             AttackRollAdvantage = activeEffects.Any(effect => effect.Kind == ItemEffectKind.AttackRollAdvantage)
                                   || state.HasBuff("Lucky: attack advantage") || state.HasBuff("Greater Invisibility")
                                   || (state.HasBuff("Reckless Attack") && state.GetClassLevel("Barbarian") >= 2),
-            AttackRollDisadvantage = nonProficientGear.Count > 0,
+            AttackRollDisadvantage = nonProficientGear.Count > 0
+                                      || (state.HasPermanentBonus("Paid the Price") && state.HasBuff("Paid the Price: attacking a Hag")),
             EnemySavingThrowDisadvantage = activeEffects.Any(effect => effect.Kind == ItemEffectKind.EnemySavingThrowDisadvantage),
             CriticalHitImmune = criticalHitImmune,
             DamageReduction = activeEffects.Where(effect => effect.Kind == ItemEffectKind.DamageReduction).Sum(effect => effect.Value)
@@ -340,8 +348,11 @@ internal static partial class CharacterCalculator
                 .Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(value => value).ToList(),
             NonProficientGear = nonProficientGear,
             BuildWarnings = buildWarnings,
-            AttackBonusDie = state.HasBuff("Bless") ? 4 : 0,
-            SavingThrowBonusDie = savingThrowDie,
+            AttackBonusDie = attackBonusD4Count > 0 ? 4 : 0,
+            SavingThrowBonusDie = savingThrowBonusD4Count > 0 ? 4 : 0,
+            AttackBonusD4Count = attackBonusD4Count,
+            SavingThrowBonusD4Count = savingThrowBonusD4Count,
+            TemporaryHitPoints = state.HasPermanentBonus("The Tharchiate Codex: Blessing") ? 20 : 0,
             CriticalThreshold = criticalThreshold,
             SpellCriticalThreshold = spellCriticalThreshold,
             ArmourClassBreakdown = armourClassBreakdown,
@@ -468,6 +479,53 @@ internal static partial class CharacterCalculator
         }
     }
 
+    private static void ApplyPermanentAbilityChanges(CharacterState state, Dictionary<string, int> abilities)
+    {
+        var hairAbility = state.PermanentBonusChoice("Auntie Ethel's Hair");
+        if (state.HasPermanentBonus("Auntie Ethel's Hair") && abilities.ContainsKey(hairAbility))
+            abilities[hairAbility]++;
+
+        if (state.HasPermanentBonus("Potion of Everlasting Vigour"))
+            abilities["STR"] += 2;
+        if (state.HasPermanentBonus("Zaith'isk Penalty: Intelligence"))
+            abilities["INT"] = Math.Max(1, abilities["INT"] - 2);
+        if (state.HasPermanentBonus("Zaith'isk Penalty: Wisdom"))
+            abilities["WIS"] = Math.Max(1, abilities["WIS"] - 2);
+        if (state.HasPermanentBonus("Zaith'isk Penalty: Constitution"))
+            abilities["CON"] = Math.Max(1, abilities["CON"] - 2);
+        if (state.HasPermanentBonus("Tharchiate Withering"))
+            abilities["CON"] = Math.Max(1, abilities["CON"] - 5);
+
+        var mirrorAbility = state.PermanentBonusChoice("Mirror of Loss");
+        if (state.HasPermanentBonus("Mirror of Loss") && abilities.ContainsKey(mirrorAbility))
+            abilities[mirrorAbility] = Math.Min(24, abilities[mirrorAbility] + 2);
+        if (state.HasPermanentBonus("Patriar's Memory"))
+            abilities["CHA"] = Math.Min(24, abilities["CHA"] + 1);
+    }
+
+    private static List<ItemEffect> PermanentBonusEffects(CharacterState state)
+    {
+        var effects = new List<ItemEffect>();
+        void Add(string source, ItemEffectKind kind, string scope, string summary, int value = 0) =>
+            effects.Add(new ItemEffect($"permanent|{source}|{kind}|{scope}", source, kind, scope, summary, false, true, value));
+
+        if (state.HasPermanentBonus("Forbidden Knowledge"))
+            Add("Forbidden Knowledge", ItemEffectKind.SavingThrowBonus, "WIS", "+1 Wisdom saving throws", 1);
+        if (state.HasPermanentBonus("Anointed in Splendour"))
+            Add("Anointed in Splendour", ItemEffectKind.SavingThrowBonus, "ALL", "+2 all saving throws", 2);
+        if (state.HasPermanentBonus("Githzerai Mind Barrier"))
+            Add("Githzerai Mind Barrier", ItemEffectKind.SavingThrowAdvantage, "INT", "Advantage on Intelligence saving throws");
+        if (state.HasPermanentBonus("Loviatar's Love") && state.HasBuff("Loviatar's Love active (30% HP or less)"))
+        {
+            Add("Loviatar's Love", ItemEffectKind.AttackRollBonus, "Attacks", "+2 attack rolls", 2);
+            Add("Loviatar's Love", ItemEffectKind.SavingThrowBonus, "WIS", "+2 Wisdom saving throws", 2);
+        }
+        if (state.HasPermanentBonus("BOOOAL's Benediction") && state.HasBuff("BOOOAL target is Bleeding"))
+            Add("BOOOAL's Benediction", ItemEffectKind.AttackRollAdvantage, "ALL", "Advantage against Bleeding targets");
+
+        return effects;
+    }
+
     private static void ApplyEquipmentAbilityChanges(Dictionary<string, int> abilities, List<ItemRecord> equipped)
     {
         foreach (var item in equipped)
@@ -565,6 +623,14 @@ internal static partial class CharacterCalculator
             warnings.Add("Indomitable inactive: Fighter level 9 required.");
         if (state.HasBuff("Champion: Improved Critical Hit") && state.GetClassLevel("Fighter") < 3)
             warnings.Add("Champion: Improved Critical Hit inactive: Fighter level 3 required.");
+        if (state.HasBuff("Loviatar's Love active (30% HP or less)") && !state.HasPermanentBonus("Loviatar's Love"))
+            warnings.Add("Loviatar's Love condition inactive: permanent bonus not selected.");
+        if (state.HasBuff("BOOOAL target is Bleeding") && !state.HasPermanentBonus("BOOOAL's Benediction"))
+            warnings.Add("BOOOAL condition inactive: permanent bonus not selected.");
+        if (state.HasBuff("Paid the Price: attacking a Hag") && !state.HasPermanentBonus("Paid the Price"))
+            warnings.Add("Paid the Price condition inactive: permanent bonus not selected.");
+        if (state.HasPermanentBonus("Paid the Price") && state.HasPermanentBonus("Volo's Ersatz Eye"))
+            warnings.Add("Paid the Price and Volo's Ersatz Eye are mutually exclusive.");
         if (state.HasBuff("Paladin Aura active") && state.GetClassLevel("Paladin") < 6)
             warnings.Add("Aura of Protection inactive: Paladin level 6 required.");
         return warnings;
@@ -728,20 +794,24 @@ internal static partial class CharacterCalculator
         return successfulFaces * 5;
     }
 
-    private static double SpellEffectChance(int savingThrowBonus, int dc, int bonusDie, bool advantage, bool disadvantage)
+    internal static double SavingThrowFailureChance(int savingThrowBonus, int dc, int bonusD4Count, bool advantage, bool disadvantage)
     {
         var fails = 0;
         var total = 0;
-        var dieFaces = bonusDie > 0 ? bonusDie : 1;
+        var bonusSums = new List<int> { 0 };
+        for (var die = 0; die < bonusD4Count; die++)
+            bonusSums = bonusSums.SelectMany(sum => Enumerable.Range(1, 4).Select(face => sum + face)).ToList();
         for (var first = 1; first <= 20; first++)
         for (var second = 1; second <= 20; second++)
-        for (var bonus = 1; bonus <= dieFaces; bonus++)
+        foreach (var bonus in bonusSums)
         {
             var roll = advantage == disadvantage ? first : advantage ? Math.Max(first, second) : Math.Min(first, second);
             if (advantage == disadvantage && second != 1)
                 continue;
-            var bonusValue = bonusDie > 0 ? bonus : 0;
-            var succeeds = roll == 20 || (roll != 1 && roll + savingThrowBonus + bonusValue >= dc);
+            // Ordinary combat saving throws in BG3 do not automatically fail on a
+            // natural 1 or succeed on a natural 20. Concentration and dialogue
+            // saves are exceptions, neither of which is represented by these cards.
+            var succeeds = roll + savingThrowBonus + bonus >= dc;
             if (!succeeds) fails++;
             total++;
         }
@@ -755,7 +825,7 @@ internal static partial class CharacterCalculator
         List<ItemEffect> effects,
         bool generalAdvantage,
         bool generalDisadvantage,
-        int bonusDie)
+        int bonusD4Count)
     {
         var probabilities = new List<(double Chance, string Ability)>();
         foreach (var ability in new[] { "DEX", "CON", "WIS" })
@@ -764,7 +834,7 @@ internal static partial class CharacterCalculator
             if (ability == "DEX" && state.HasBuff("Haste")) specificAdvantage = true;
             if (ability == "DEX" && state.HasBuff("Danger Sense") && state.GetClassLevel("Barbarian") >= 2) specificAdvantage = true;
             if (ability == "WIS" && state.HasBuff("Heroes' Feast")) specificAdvantage = true;
-            var chance = SpellEffectChance(saves[ability], dc, bonusDie, generalAdvantage || specificAdvantage, generalDisadvantage);
+            var chance = SavingThrowFailureChance(saves[ability], dc, bonusD4Count, generalAdvantage || specificAdvantage, generalDisadvantage);
             if (state.HasBuff("Indomitable") && state.GetClassLevel("Fighter") >= 9)
                 chance = Math.Round(chance * chance / 100.0, 2, MidpointRounding.AwayFromZero);
             probabilities.Add((chance, ability));

@@ -8,6 +8,9 @@ internal sealed class CharacterSheetPanel : UserControl
     private readonly List<ItemRecord> _items;
     private readonly ComboBox _template = new();
     private readonly TextBox _characterName = new();
+    private readonly TextBox _shareId = new();
+    private readonly Button _copyShareLink = new();
+    private readonly Button _importShareId = new();
     private readonly ComboBox _race = new();
     private readonly ComboBox _class = new();
     private readonly ComboBox _difficulty = new();
@@ -19,6 +22,7 @@ internal sealed class CharacterSheetPanel : UserControl
     private readonly Label _title = new();
     private readonly Label _templateCaption = new();
     private readonly Label _characterNameCaption = new();
+    private readonly Label _shareIdCaption = new();
     private readonly Label _identityCaption = new();
     private readonly Label _abilityCaption = new();
     private readonly Label _classLevelsCaption = new();
@@ -28,6 +32,10 @@ internal sealed class CharacterSheetPanel : UserControl
     private readonly Label _featSummary = new();
     private readonly Label _activeBuffsCaption = new();
     private readonly Label _buffInfo = new();
+    private readonly Label _permanentBonusesCaption = new();
+    private readonly CheckedListBox _permanentBonuses = new();
+    private readonly ComboBox _permanentBonusChoice = new();
+    private readonly Label _permanentBonusInfo = new();
     private readonly Label _buildWarnings = new();
     private readonly Label _offenseCaption = new();
     private readonly Label _defenseCaption = new();
@@ -101,6 +109,9 @@ internal sealed class CharacterSheetPanel : UserControl
         _title.Text = Localization.T("CharacterSheet");
         _templateCaption.Text = Localization.T("CharacterTemplate");
         _characterNameCaption.Text = Localization.T("CharacterName");
+        _shareIdCaption.Text = Localization.T("ShareId");
+        _copyShareLink.Text = Localization.T("CopyLink");
+        _importShareId.Text = Localization.T("Import");
         _identityCaption.Text = Localization.T("Identity");
         _abilityCaption.Text = Localization.T("BaseAbilities");
         _offenseCaption.Text = Localization.T("Offense");
@@ -115,6 +126,7 @@ internal sealed class CharacterSheetPanel : UserControl
         _classFeaturesCaption.Text = Localization.T("ClassFeatures");
         _featsCaption.Text = Localization.T("Feats");
         _activeBuffsCaption.Text = Localization.T("ActiveSpellsConditions");
+        _permanentBonusesCaption.Text = Localization.T("PermanentBonuses");
         _buildTab.Text = Localization.T("BuildTab");
         _statsTab.Text = Localization.T("StatsTab");
         _difficultyCaption.Text = Localization.T("Difficulty");
@@ -138,25 +150,48 @@ internal sealed class CharacterSheetPanel : UserControl
         var templateBar = new TableLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 58,
+            Height = 100,
             ColumnCount = 2,
-            RowCount = 2,
+            RowCount = 4,
             Padding = new Padding(10, 4, 10, 4),
             BackColor = Theme.ParchmentAlt
         };
         templateBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
         templateBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
+        templateBar.RowStyles.Add(new RowStyle(SizeType.Absolute, 18));
+        templateBar.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
+        templateBar.RowStyles.Add(new RowStyle(SizeType.Absolute, 18));
+        templateBar.RowStyles.Add(new RowStyle(SizeType.Absolute, 27));
         ConfigureCaption(_templateCaption);
         ConfigureCaption(_characterNameCaption);
+        ConfigureCaption(_shareIdCaption);
         ConfigureCombo(_template);
         _characterName.Dock = DockStyle.Top;
         _characterName.Font = Theme.Body(8.5f);
         _characterName.BackColor = Theme.Parchment;
         _characterName.MaxLength = 40;
+        _shareId.Dock = DockStyle.Fill;
+        _shareId.ReadOnly = true;
+        _shareId.Font = Theme.Body(7.25f);
+        _shareId.BackColor = Theme.Parchment;
+        _shareId.WordWrap = false;
+        var shareControls = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, Margin = new Padding(2, 0, 0, 0) };
+        shareControls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55));
+        shareControls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 23));
+        shareControls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 22));
+        ConfigureSmallButton(_copyShareLink);
+        ConfigureSmallButton(_importShareId);
+        shareControls.Controls.Add(_shareId, 0, 0);
+        shareControls.Controls.Add(_copyShareLink, 1, 0);
+        shareControls.Controls.Add(_importShareId, 2, 0);
         templateBar.Controls.Add(_templateCaption, 0, 0);
         templateBar.Controls.Add(_characterNameCaption, 1, 0);
         templateBar.Controls.Add(_template, 0, 1);
         templateBar.Controls.Add(_characterName, 1, 1);
+        templateBar.Controls.Add(_shareIdCaption, 0, 2);
+        templateBar.SetColumnSpan(_shareIdCaption, 2);
+        templateBar.Controls.Add(shareControls, 0, 3);
+        templateBar.SetColumnSpan(shareControls, 2);
         var content = new TableLayoutPanel
         {
             Dock = DockStyle.Top,
@@ -256,6 +291,20 @@ internal sealed class CharacterSheetPanel : UserControl
             abilities.Controls.Add(cell, index % 3, index / 3);
         }
         content.Controls.Add(abilities);
+
+        ConfigureSection(_permanentBonusesCaption);
+        content.Controls.Add(_permanentBonusesCaption);
+        _permanentBonuses.Dock = DockStyle.Top;
+        _permanentBonuses.Height = 190;
+        _permanentBonuses.CheckOnClick = true;
+        _permanentBonuses.Font = Theme.Body(8f);
+        _permanentBonuses.BackColor = Theme.Parchment;
+        content.Controls.Add(_permanentBonuses);
+        ConfigureCombo(_permanentBonusChoice);
+        _permanentBonusChoice.Enabled = false;
+        content.Controls.Add(_permanentBonusChoice);
+        ConfigureBody(_permanentBonusInfo, true);
+        content.Controls.Add(_permanentBonusInfo);
 
         ConfigureSection(_classFeaturesCaption);
         content.Controls.Add(_classFeaturesCaption);
@@ -441,8 +490,11 @@ internal sealed class CharacterSheetPanel : UserControl
                 return;
             _state.Name = string.IsNullOrWhiteSpace(_characterName.Text) ? $"Character {_activeTemplateIndex + 1}" : _characterName.Text.Trim();
             RefreshTemplateSelector();
+            RefreshShareId();
             StateChanged?.Invoke(this, EventArgs.Empty);
         };
+        _copyShareLink.Click += (_, _) => CopyShareLink();
+        _importShareId.Click += (_, _) => ImportShareId();
         _race.SelectedIndexChanged += (_, _) => UpdateStateFromControls();
         _class.SelectedIndexChanged += (_, _) => ChangeStartingClass();
         _difficulty.SelectedIndexChanged += (_, _) => UpdateStateFromControls();
@@ -472,6 +524,9 @@ internal sealed class CharacterSheetPanel : UserControl
                 _buffInfo.Text = option.Definition.Description + (option.Definition.Concentration ? "  [Concentration]" : "");
         };
         _buffs.ItemCheck += (_, eventArgs) => HandleBuffCheck(eventArgs);
+        _permanentBonuses.SelectedIndexChanged += (_, _) => RefreshPermanentBonusSelection();
+        _permanentBonuses.ItemCheck += (_, eventArgs) => HandlePermanentBonusCheck(eventArgs);
+        _permanentBonusChoice.SelectedIndexChanged += (_, _) => UpdatePermanentBonusChoice();
         _conditions.ItemCheck += (_, eventArgs) =>
         {
             if (_updating || _conditions.Items[eventArgs.Index] is not ConditionalEffectOption option)
@@ -601,7 +656,78 @@ internal sealed class CharacterSheetPanel : UserControl
         foreach (var buff in BuildOptions.Buffs)
             _buffs.Items.Add(new BuffOption(buff), _state.HasBuff(buff.Name));
         _buffs.EndUpdate();
+
+        var selectedPermanentName = (_permanentBonuses.SelectedItem as PermanentBonusOption)?.Definition.Name;
+        _permanentBonuses.BeginUpdate();
+        _permanentBonuses.Items.Clear();
+        foreach (var bonus in PermanentBonusCatalog.All)
+            _permanentBonuses.Items.Add(new PermanentBonusOption(bonus), _state.HasPermanentBonus(bonus.Name));
+        if (!string.IsNullOrWhiteSpace(selectedPermanentName))
+        {
+            var selectedIndex = _permanentBonuses.Items.Cast<PermanentBonusOption>()
+                .ToList().FindIndex(option => option.Definition.Name.Equals(selectedPermanentName, StringComparison.OrdinalIgnoreCase));
+            if (selectedIndex >= 0)
+                _permanentBonuses.SelectedIndex = selectedIndex;
+        }
+        if (_permanentBonuses.SelectedIndex < 0 && _permanentBonuses.Items.Count > 0)
+            _permanentBonuses.SelectedIndex = 0;
+        _permanentBonuses.EndUpdate();
+        RefreshPermanentBonusSelection();
         _updating = previousUpdating;
+    }
+
+    private void HandlePermanentBonusCheck(ItemCheckEventArgs eventArgs)
+    {
+        if (_updating || _permanentBonuses.Items[eventArgs.Index] is not PermanentBonusOption option)
+            return;
+        var enabled = eventArgs.NewValue == CheckState.Checked;
+        BeginInvoke(() =>
+        {
+            _state.PermanentBonuses.RemoveAll(selection => selection.Name.Equals(option.Definition.Name, StringComparison.OrdinalIgnoreCase));
+            if (enabled)
+            {
+                _state.PermanentBonuses.Add(new PermanentBonusSelection
+                {
+                    Name = option.Definition.Name,
+                    Choice = option.Definition.Choices.FirstOrDefault() ?? ""
+                });
+            }
+            RefreshPermanentBonusSelection();
+            RefreshCalculations(rebuildConditions: false);
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        });
+    }
+
+    private void RefreshPermanentBonusSelection()
+    {
+        if (_permanentBonuses.SelectedItem is not PermanentBonusOption option)
+            return;
+        var wasUpdating = _updating;
+        _updating = true;
+        _permanentBonusInfo.Text = $"{option.Definition.Act} · {option.Definition.Description}";
+        _permanentBonusChoice.BeginUpdate();
+        _permanentBonusChoice.Items.Clear();
+        if (option.Definition.Choices.Length == 0)
+            _permanentBonusChoice.Items.Add("—");
+        else
+            _permanentBonusChoice.Items.AddRange(option.Definition.Choices);
+        var selectedChoice = _state.PermanentBonusChoice(option.Definition.Name);
+        _permanentBonusChoice.SelectedItem = _permanentBonusChoice.Items.Contains(selectedChoice)
+            ? selectedChoice
+            : _permanentBonusChoice.Items[0];
+        _permanentBonusChoice.Enabled = _state.HasPermanentBonus(option.Definition.Name) && option.Definition.Choices.Length > 0;
+        _permanentBonusChoice.EndUpdate();
+        _updating = wasUpdating;
+    }
+
+    private void UpdatePermanentBonusChoice()
+    {
+        if (_updating || _permanentBonuses.SelectedItem is not PermanentBonusOption option || !_state.HasPermanentBonus(option.Definition.Name))
+            return;
+        var selection = _state.PermanentBonuses.First(bonus => bonus.Name.Equals(option.Definition.Name, StringComparison.OrdinalIgnoreCase));
+        selection.Choice = _permanentBonusChoice.SelectedItem as string ?? "";
+        RefreshCalculations(rebuildConditions: false);
+        StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void RefreshFeatChoice(int index, bool preserveChoice)
@@ -659,6 +785,7 @@ internal sealed class CharacterSheetPanel : UserControl
 
     private void RefreshCalculations(bool rebuildConditions = true)
     {
+        RefreshShareId();
         var stats = CharacterCalculator.Calculate(_state, _items);
         _acValue.Text = stats.ArmourClass.ToString();
         _spellDcValue.Text = stats.SpellSaveDc.ToString();
@@ -672,16 +799,17 @@ internal sealed class CharacterSheetPanel : UserControl
             ? ""
             : stats.AttackRollAdvantage ? " • ADV" : " • DIS";
         var enemySaves = stats.EnemySavingThrowDisadvantage ? " • Enemy saves: DIS" : "";
-        var blessAttack = stats.AttackBonusDie > 0 ? $" + 1d{stats.AttackBonusDie}" : "";
+        var blessAttack = FormatD4Bonus(stats.AttackBonusD4Count);
         _offense.Text = Localization.Format("OffenseLine", Signed(stats.WeaponAttack) + blessAttack, stats.AttackAbility, Signed(stats.SpellAttack) + blessAttack, stats.SpellAbility, stats.SpellClass, stats.Proficiency) + advantage + enemySaves;
         var defenseExtras = new List<string>();
         if (stats.CriticalHitImmune) defenseExtras.Add(Localization.T("NoCriticalHits"));
         if (stats.DamageReduction > 0) defenseExtras.Add(Localization.Format("DamageReduction", stats.DamageReduction));
         if (stats.Resistances.Count > 0) defenseExtras.Add(Localization.Format("Resistances", string.Join(", ", stats.Resistances)));
+        if (stats.TemporaryHitPoints > 0) defenseExtras.Add(Localization.Format("TemporaryHitPoints", stats.TemporaryHitPoints));
         if (stats.NonProficientGear.Count > 0) defenseExtras.Add(Localization.Format("NonProficientGear", string.Join(", ", stats.NonProficientGear)));
         if (stats.BuildWarnings.Count > 0) defenseExtras.Add(Localization.Format("UnmetRequirements", stats.BuildWarnings.Count));
         _defense.Text = Localization.Format("DefenseLine", stats.HitPoints, Signed(stats.Initiative), stats.Movement) + (defenseExtras.Count == 0 ? "" : Environment.NewLine + string.Join(" • ", defenseExtras));
-        var blessSave = stats.SavingThrowBonusDie > 0 ? $" + 1d{stats.SavingThrowBonusDie}" : "";
+        var blessSave = FormatD4Bonus(stats.SavingThrowBonusD4Count);
         _saves.Text = Localization.T("SavingThrows") + ": " + string.Join("  ", CharacterCalculator.AbilityNames.Select(ability => $"{ability} {Signed(stats.Saves[ability])}{blessSave}"));
         _buildWarnings.Text = stats.BuildWarnings.Count == 0
             ? Localization.T("AllRequirementsMet")
@@ -801,6 +929,17 @@ internal sealed class CharacterSheetPanel : UserControl
         combo.Margin = new Padding(2);
     }
 
+    private static void ConfigureSmallButton(Button button)
+    {
+        button.Dock = DockStyle.Fill;
+        button.FlatStyle = FlatStyle.Flat;
+        button.FlatAppearance.BorderColor = Theme.Gold;
+        button.BackColor = Theme.CrimsonDark;
+        button.ForeColor = Theme.GoldLight;
+        button.Font = Theme.Body(7.25f, FontStyle.Bold);
+        button.Margin = new Padding(2, 0, 0, 0);
+    }
+
     private static void ConfigureHeading(Label label, float size, Color color, Padding margin)
     {
         label.AutoSize = true;
@@ -828,6 +967,118 @@ internal sealed class CharacterSheetPanel : UserControl
 
     private static string Signed(int value) => value >= 0 ? $"+{value}" : value.ToString();
 
+    private static string FormatD4Bonus(int count) => count switch
+    {
+        <= 0 => "",
+        1 => " + 1d4",
+        _ => $" + {count}d4"
+    };
+
+    private void RefreshShareId()
+    {
+        try
+        {
+            _shareId.Text = TemplateShareService.ExportId(_state);
+        }
+        catch
+        {
+            _shareId.Text = _state.TemplateId;
+        }
+    }
+
+    private void CopyShareLink()
+    {
+        try
+        {
+            Clipboard.SetText(TemplateShareService.ExportLink(_state));
+            _copyShareLink.Text = Localization.T("Copied");
+            var resetTimer = new System.Windows.Forms.Timer { Interval = 1400 };
+            resetTimer.Tick += (_, _) =>
+            {
+                resetTimer.Stop();
+                resetTimer.Dispose();
+                if (!IsDisposed)
+                    _copyShareLink.Text = Localization.T("CopyLink");
+            };
+            resetTimer.Start();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, Localization.Format("ShareCopyError", exception.Message), Localization.T("CharacterTemplate"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void ImportShareId()
+    {
+        var input = PromptForShareId();
+        if (string.IsNullOrWhiteSpace(input))
+            return;
+        try
+        {
+            var imported = TemplateShareService.Import(input);
+            TemplateShareService.CopyInto(_state, imported);
+            var equipped = _state.EquippedKeys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in _items)
+                item.Equipped = equipped.Contains(item.ProgressKey);
+            LoadStateIntoControls();
+            RefreshCalculations();
+            StateChanged?.Invoke(this, EventArgs.Empty);
+            MessageBox.Show(this, Localization.T("ImportSuccess"), Localization.T("ImportTemplate"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, Localization.Format("ImportError", exception.Message), Localization.T("ImportTemplate"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private string? PromptForShareId()
+    {
+        using var dialog = new Form
+        {
+            Text = Localization.T("ImportTemplate"),
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false,
+            MinimizeBox = false,
+            ClientSize = new Size(620, 145),
+            BackColor = Theme.ParchmentAlt,
+            Font = Theme.Body(9f)
+        };
+        var prompt = new Label
+        {
+            Text = Localization.T("PasteShareId"),
+            AutoSize = true,
+            Location = new Point(12, 12),
+            ForeColor = Theme.Ink
+        };
+        var input = new TextBox
+        {
+            Multiline = true,
+            ScrollBars = ScrollBars.Vertical,
+            Location = new Point(12, 36),
+            Size = new Size(596, 62),
+            BackColor = Theme.Parchment
+        };
+        var import = new Button
+        {
+            Text = Localization.T("Import"),
+            DialogResult = DialogResult.OK,
+            Location = new Point(430, 108),
+            Size = new Size(86, 27)
+        };
+        var cancel = new Button
+        {
+            Text = Localization.T("Cancel"),
+            DialogResult = DialogResult.Cancel,
+            Location = new Point(522, 108),
+            Size = new Size(86, 27)
+        };
+        dialog.Controls.AddRange([prompt, input, import, cancel]);
+        dialog.AcceptButton = import;
+        dialog.CancelButton = cancel;
+        return dialog.ShowDialog(this) == DialogResult.OK ? input.Text : null;
+    }
+
     private void SetCalculationToolTip(Control? root, string text)
     {
         if (root is null)
@@ -850,6 +1101,11 @@ internal sealed class CharacterSheetPanel : UserControl
     }
 
     private sealed record FeatSlotControls(ComboBox Feat, ComboBox Choice);
+
+    private sealed record PermanentBonusOption(PermanentBonusDefinition Definition)
+    {
+        public override string ToString() => $"{Definition.Act} - {Definition.Name}";
+    }
 
     private sealed record BuffOption(BuffDefinition Definition)
     {

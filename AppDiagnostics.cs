@@ -37,7 +37,8 @@ internal static class AppDiagnostics
                 ClassLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Fighter"] = 2, ["Wizard"] = 5 },
                 FightingStyles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Fighter"] = "Defence" },
                 Feats = [new FeatSelection { Name = "Ability Improvement", Choice = "INT +2" }],
-                ActiveBuffs = ["Mage Armour"]
+                ActiveBuffs = ["Mage Armour"],
+                PermanentBonuses = [new PermanentBonusSelection { Name = "Auntie Ethel's Hair", Choice = "INT" }]
             };
             store.Save(items, testCharacter);
             var loadedState = store.LoadState();
@@ -51,7 +52,10 @@ internal static class AppDiagnostics
                                  && loadedState.Character.GetClassLevel("Wizard") == 5
                                  && loadedState.Character.FightingStyles.GetValueOrDefault("Fighter") == "Defence"
                                  && loadedState.Character.Feats.Any(feat => feat.Name == "Ability Improvement" && feat.Choice == "INT +2")
-                                 && loadedState.Character.HasBuff("Mage Armour");
+                                 && loadedState.Character.HasBuff("Mage Armour")
+                                 && loadedState.Character.HasPermanentBonus("Auntie Ethel's Hair")
+                                 && loadedState.Character.PermanentBonusChoice("Auntie Ethel's Hair") == "INT"
+                                 && !string.IsNullOrWhiteSpace(loadedState.Character.TemplateId);
             var templates = Enumerable.Range(1, 4).Select(index => new CharacterState { Name = $"Test Hero {index}" }).ToList();
             items[1].Equipped = true;
             store.Save(items, templates, 2);
@@ -99,6 +103,13 @@ internal static class AppDiagnostics
                                        && CharacterCalculator.AttackHitChance(-100, 0) == 95
                                        && CharacterCalculator.ApplyRollMode(5, false, true) == 0.25
                                        && CharacterCalculator.ApplyRollMode(95, true, false) == 99.75;
+        var savingThrowRulesApplied = CharacterCalculator.SavingThrowFailureChance(100, 15, 0, false, false) == 0
+                                      && CharacterCalculator.SavingThrowFailureChance(-100, 15, 0, false, false) == 100
+                                      && CharacterCalculator.SavingThrowFailureChance(0, 11, 0, false, false) == 50
+                                      && CharacterCalculator.SavingThrowFailureChance(0, 11, 0, true, false) == 25
+                                      && CharacterCalculator.SavingThrowFailureChance(0, 11, 0, false, true) == 75
+                                      && CharacterCalculator.SavingThrowFailureChance(0, 11, 2, false, false)
+                                         < CharacterCalculator.SavingThrowFailureChance(0, 11, 1, false, false);
         var multiclassState = new CharacterState
         {
             ClassName = "Fighter",
@@ -203,6 +214,52 @@ internal static class AppDiagnostics
                                      && sanctuaryStats.Threats.All(threat => threat.AttackHitChance == 0 && threat.SpellAttackHitChance == 0)
                                      && resistanceStats.AttackBonusDie == 0
                                      && resistanceStats.SavingThrowBonusDie == 4;
+        var permanentState = new CharacterState
+        {
+            TemplateId = "0123456789abcdef0123456789abcdef",
+            Name = "Share Test",
+            ClassName = "Fighter",
+            Level = 4,
+            ClassLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Fighter"] = 4 },
+            PermanentBonuses =
+            [
+                new PermanentBonusSelection { Name = "Auntie Ethel's Hair", Choice = "STR" },
+                new PermanentBonusSelection { Name = "Potion of Everlasting Vigour" },
+                new PermanentBonusSelection { Name = "Mirror of Loss", Choice = "STR" },
+                new PermanentBonusSelection { Name = "Patriar's Memory" },
+                new PermanentBonusSelection { Name = "Forbidden Knowledge" },
+                new PermanentBonusSelection { Name = "Anointed in Splendour" },
+                new PermanentBonusSelection { Name = "Sweet Stone Features" },
+                new PermanentBonusSelection { Name = "The Tharchiate Codex: Blessing" }
+            ]
+        };
+        var permanentStats = CharacterCalculator.Calculate(permanentState, items);
+        var permanentBonusMathApplied = PermanentBonusCatalog.All.Length >= 35
+                                        && permanentStats.Abilities["STR"] == 21
+                                        && permanentStats.Abilities["CHA"] == 11
+                                        && permanentStats.Saves["WIS"] == 3
+                                        && permanentStats.AttackBonusD4Count == 1
+                                        && permanentStats.SavingThrowBonusD4Count == 1
+                                        && permanentStats.TemporaryHitPoints == 20;
+        permanentState.EquippedKeys = [items[0].ProgressKey];
+        permanentState.ActiveBuffs = ["Bless"];
+        var shareLink = TemplateShareService.ExportLink(permanentState);
+        var importedTemplate = TemplateShareService.Import(shareLink);
+        var templateSharingApplied = shareLink.Contains("#template=BG3T1.", StringComparison.Ordinal)
+                                     && importedTemplate.TemplateId == permanentState.TemplateId
+                                     && importedTemplate.Name == permanentState.Name
+                                     && importedTemplate.EquippedKeys.SequenceEqual(permanentState.EquippedKeys)
+                                     && importedTemplate.HasBuff("Bless")
+                                     && importedTemplate.PermanentBonusChoice("Mirror of Loss") == "STR";
+        try
+        {
+            _ = TemplateShareService.Import("BG3T1.invalid");
+            templateSharingApplied = false;
+        }
+        catch (Exception exception) when (exception is FormatException or InvalidDataException or JsonException)
+        {
+            // Expected: malformed share data must never be accepted.
+        }
         var testShields = items.Where(item => item.Type.Equals("Shield", StringComparison.OrdinalIgnoreCase)).Take(2).ToList();
         var gearCharacterOne = new CharacterState { Name = "Gear One" };
         var gearCharacterTwo = new CharacterState { Name = "Gear Two" };
@@ -273,7 +330,7 @@ internal static class AppDiagnostics
 
         var report = new
         {
-            Passed = items.Count == 556 && uniqueProgressKeys == items.Count && loadedImages == items.Count && progressRoundTrip && characterRoundTrip && templatesRoundTrip && templateGearSetsApplied && displacementMathApplied && difficultyMathApplied && worstCaseThreatsApplied && averageThreatsApplied && naturalRollBoundsApplied && multiclassMathApplied && featAndBuffMathApplied && criticalMathApplied && criticalGearParsingApplied && thresholdFourteenApplied && calculationsExplained && FontManager.IsAlegreyaLoaded,
+            Passed = items.Count == 556 && uniqueProgressKeys == items.Count && loadedImages == items.Count && progressRoundTrip && characterRoundTrip && templatesRoundTrip && templateGearSetsApplied && displacementMathApplied && difficultyMathApplied && worstCaseThreatsApplied && averageThreatsApplied && naturalRollBoundsApplied && savingThrowRulesApplied && multiclassMathApplied && featAndBuffMathApplied && permanentBonusMathApplied && templateSharingApplied && criticalMathApplied && criticalGearParsingApplied && thresholdFourteenApplied && calculationsExplained && FontManager.IsAlegreyaLoaded,
             ItemCount = items.Count,
             ActCounts = items.GroupBy(item => item.Act).ToDictionary(group => group.Key, group => group.Count()),
             UniqueProgressKeys = uniqueProgressKeys,
@@ -291,8 +348,11 @@ internal static class AppDiagnostics
             WorstCaseThreatsApplied = worstCaseThreatsApplied,
             AverageThreatsApplied = averageThreatsApplied,
             NaturalRollBoundsApplied = naturalRollBoundsApplied,
+            SavingThrowRulesApplied = savingThrowRulesApplied,
             MulticlassMathApplied = multiclassMathApplied,
             FeatAndBuffMathApplied = featAndBuffMathApplied,
+            PermanentBonusMathApplied = permanentBonusMathApplied,
+            TemplateSharingApplied = templateSharingApplied,
             CriticalMathApplied = criticalMathApplied,
             CriticalGearParsingApplied = criticalGearParsingApplied,
             CriticalGearSources = parsedCriticalGear.Count,

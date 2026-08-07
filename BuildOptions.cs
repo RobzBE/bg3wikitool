@@ -119,7 +119,10 @@ internal static class BuildOptions
         new("Indomitable", "Reroll one failed saving throw. Requires Fighter level 9; toggle for the next benchmark save."),
         new("Paladin Aura active", "Aura of Protection adds Charisma modifier to saves. Requires Paladin level 6 and consciousness."),
         new("Champion: Improved Critical Hit", "Toggle only for a Champion Fighter of level 3 or higher. Reduces the critical-hit threshold by 1."),
-        new("Elixir of Viciousness", "Reduces the critical-hit threshold by 1 until Long Rest.")
+        new("Elixir of Viciousness", "Reduces the critical-hit threshold by 1 until Long Rest."),
+        new("Loviatar's Love active (30% HP or less)", "+2 attack rolls and Wisdom saves while the permanent passive's HP condition is met."),
+        new("BOOOAL target is Bleeding", "Advantage on attack rolls against a Bleeding target when BOOOAL's Benediction is owned."),
+        new("Paid the Price: attacking a Hag", "Disadvantage on attacks against Hags when Paid the Price is owned.")
     ];
 
     public static int FeatSlotCount(CharacterState state)
