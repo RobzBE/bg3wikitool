@@ -17,6 +17,7 @@ internal sealed class CharacterSheetPanel : UserControl
     private readonly ComboBox _difficulty = new();
     private readonly NumericUpDown _level = new WheelSafeNumericUpDown();
     private readonly Dictionary<string, NumericUpDown> _abilities = [];
+    private readonly Dictionary<string, Label> _abilityTotals = [];
     private readonly Dictionary<string, NumericUpDown> _classLevels = [];
     private readonly Dictionary<string, ComboBox> _multiclassSubclasses = [];
     private readonly Dictionary<string, ComboBox> _fightingStyles = [];
@@ -92,6 +93,7 @@ internal sealed class CharacterSheetPanel : UserControl
         _items = items;
         Dock = DockStyle.Fill;
         BackColor = Color.FromArgb(248, 235, 207);
+        AutoScaleMode = AutoScaleMode.Dpi;
         AutoScroll = true;
         Build();
         LoadStateIntoControls();
@@ -102,6 +104,7 @@ internal sealed class CharacterSheetPanel : UserControl
     public void RefreshFromEquipment()
     {
         _state.EquippedKeys = _items.Where(item => item.Equipped).Select(item => item.ProgressKey).OrderBy(value => value).ToList();
+        _state.ClearImportedAbilityTotals();
         RefreshCalculations();
     }
 
@@ -113,6 +116,7 @@ internal sealed class CharacterSheetPanel : UserControl
 
     public CharacterState CurrentState => _state;
     public int ActiveTemplateIndex => _activeTemplateIndex;
+    public void SelectBuildTab() => _tabs.SelectedTab = _buildTab;
     public bool CalculationToolTipsReady =>
         !string.IsNullOrWhiteSpace(_calculationToolTip.GetToolTip(_acValue))
         && !string.IsNullOrWhiteSpace(_calculationToolTip.GetToolTip(_spellDcValue))
@@ -307,14 +311,25 @@ internal sealed class CharacterSheetPanel : UserControl
                 Minimum = 3,
                 Maximum = 20,
                 Dock = DockStyle.Top,
-                Font = Theme.Body(9f),
+                Font = Theme.Body(10f),
                 Tag = ability,
-                Margin = new Padding(2)
+                Margin = new Padding(2, 2, 2, 3),
+                Height = 30
             };
             _abilities[ability] = box;
+            var total = new Label
+            {
+                AutoSize = true,
+                Dock = DockStyle.Top,
+                ForeColor = Theme.Crimson,
+                Font = Theme.Body(9f, FontStyle.Bold),
+                Margin = new Padding(3, 1, 2, 5)
+            };
+            _abilityTotals[ability] = total;
             var cell = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Margin = new Padding(1) };
             cell.Controls.Add(Caption(ability));
             cell.Controls.Add(box);
+            cell.Controls.Add(total);
             abilities.Controls.Add(cell, index % 3, index / 3);
         }
         content.Controls.Add(abilities);
@@ -324,7 +339,7 @@ internal sealed class CharacterSheetPanel : UserControl
         _permanentBonuses.Dock = DockStyle.Top;
         _permanentBonuses.Height = 190;
         _permanentBonuses.CheckOnClick = true;
-        _permanentBonuses.Font = Theme.Body(8f);
+        _permanentBonuses.Font = Theme.Body(9.5f);
         _permanentBonuses.BackColor = Theme.Parchment;
         content.Controls.Add(_permanentBonuses);
         ConfigureCombo(_permanentBonusChoice);
@@ -335,7 +350,7 @@ internal sealed class CharacterSheetPanel : UserControl
 
         ConfigureSection(_classFeaturesCaption);
         content.Controls.Add(_classFeaturesCaption);
-        var styles = new TableLayoutPanel { Dock = DockStyle.Top, Height = 122, AutoSize = false, ColumnCount = 2, RowCount = 4, Margin = new Padding(0, 0, 0, 4) };
+        var styles = new TableLayoutPanel { Dock = DockStyle.Top, Height = 152, AutoSize = false, ColumnCount = 2, RowCount = 4, Margin = new Padding(0, 0, 0, 4) };
         styles.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 35));
         styles.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 65));
         for (var index = 0; index < BuildOptions.FightingStyleSlots.Length; index++)
@@ -351,7 +366,7 @@ internal sealed class CharacterSheetPanel : UserControl
 
         ConfigureSection(_featsCaption);
         content.Controls.Add(_featsCaption);
-        var feats = new TableLayoutPanel { Dock = DockStyle.Top, Height = 124, AutoSize = false, ColumnCount = 2, RowCount = 4, Margin = new Padding(0, 0, 0, 3) };
+        var feats = new TableLayoutPanel { Dock = DockStyle.Top, Height = 152, AutoSize = false, ColumnCount = 2, RowCount = 4, Margin = new Padding(0, 0, 0, 3) };
         feats.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 59));
         feats.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 41));
         for (var index = 0; index < 4; index++)
@@ -375,7 +390,7 @@ internal sealed class CharacterSheetPanel : UserControl
         _buffs.Dock = DockStyle.Top;
         _buffs.Height = 185;
         _buffs.CheckOnClick = true;
-        _buffs.Font = Theme.Body(8f);
+        _buffs.Font = Theme.Body(9.5f);
         _buffs.BackColor = Theme.Parchment;
         content.Controls.Add(_buffs);
         ConfigureBody(_buffInfo, true);
@@ -386,7 +401,7 @@ internal sealed class CharacterSheetPanel : UserControl
         _classOptions.Dock = DockStyle.Top;
         _classOptions.Height = 120;
         _classOptions.CheckOnClick = true;
-        _classOptions.Font = Theme.Body(8f);
+        _classOptions.Font = Theme.Body(9.5f);
         _classOptions.BackColor = Theme.Parchment;
         content.Controls.Add(_classOptions);
         ConfigureBody(_classOptionInfo, true);
@@ -462,7 +477,7 @@ internal sealed class CharacterSheetPanel : UserControl
         _conditions.Dock = DockStyle.Top;
         _conditions.Height = 86;
         _conditions.CheckOnClick = true;
-        _conditions.Font = Theme.Body(8f);
+        _conditions.Font = Theme.Body(9.5f);
         _conditions.BackColor = Theme.Parchment;
         statsContent.Controls.Add(_conditions);
 
@@ -599,7 +614,6 @@ internal sealed class CharacterSheetPanel : UserControl
     {
         if (_updating)
             return;
-        var abilitiesChanged = _abilities.Any(pair => _state.GetAbility(pair.Key) != (int)pair.Value.Value);
         _state.Race = _race.SelectedItem as string ?? "Human";
         _state.ClassName = _class.SelectedItem as string ?? "Fighter";
         _state.Difficulty = _difficulty.SelectedItem as string ?? "Balanced";
@@ -621,8 +635,7 @@ internal sealed class CharacterSheetPanel : UserControl
         }
         foreach (var pair in _abilities)
             _state.SetAbility(pair.Key, (int)pair.Value.Value);
-        if (abilitiesChanged)
-            _state.ImportedCurrentAbilities = false;
+        _state.ClearImportedAbilityTotals();
         foreach (var pair in _fightingStyles)
         {
             var style = pair.Value.SelectedItem as string;
@@ -913,6 +926,8 @@ internal sealed class CharacterSheetPanel : UserControl
     {
         RefreshShareId();
         var stats = CharacterCalculator.Calculate(_state, _items);
+        foreach (var ability in CharacterCalculator.AbilityNames)
+            _abilityTotals[ability].Text = Localization.Format("AbilityTotal", stats.Abilities[ability]);
         _acValue.Text = stats.ArmourClass.ToString();
         _spellDcValue.Text = stats.SpellSaveDc.ToString();
         _criticalValue.Text = stats.CriticalThreshold == stats.SpellCriticalThreshold
@@ -1075,9 +1090,8 @@ internal sealed class CharacterSheetPanel : UserControl
     {
         combo.Dock = DockStyle.Top;
         combo.DropDownStyle = ComboBoxStyle.DropDownList;
-        combo.Font = Theme.Body(8.5f);
-        combo.BackColor = Theme.Parchment;
-        combo.Margin = new Padding(2);
+        combo.Margin = new Padding(2, 2, 2, 4);
+        Theme.ConfigureModernCombo(combo, 9.5f);
     }
 
     private static void ConfigureSmallButton(Button button)

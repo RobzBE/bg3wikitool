@@ -18,6 +18,7 @@ internal sealed class CharacterState
     public int Wisdom { get; set; } = 10;
     public int Charisma { get; set; } = 10;
     public bool ImportedCurrentAbilities { get; set; }
+    public Dictionary<string, int> ImportedAbilityTotals { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public List<string> EquippedKeys { get; set; } = [];
     public List<string> DisabledConditionalEffects { get; set; } = [];
     public List<string> EnabledConditionalEffects { get; set; } = [];
@@ -134,6 +135,7 @@ internal sealed class CharacterState
         Subclasses = normalizedSubclasses;
         SubclassName = GetSubclass(ClassName);
         FightingStyles ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        ImportedAbilityTotals ??= new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         Feats ??= [];
         EquippedKeys ??= [];
         DisabledConditionalEffects ??= [];
@@ -216,6 +218,12 @@ internal sealed class CharacterState
             case "WIS": Wisdom = value; break;
             case "CHA": Charisma = value; break;
         }
+    }
+
+    public void ClearImportedAbilityTotals()
+    {
+        ImportedCurrentAbilities = false;
+        ImportedAbilityTotals.Clear();
     }
 }
 

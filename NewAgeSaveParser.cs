@@ -45,6 +45,7 @@ internal sealed class NewAgeSaveParser
             return;
 
         ApplyAbilities(result, characterOwners);
+        ApplyBaseAbilities(result, characterOwners);
         ApplyFeats(result, characterOwners);
         ApplyFightingStyles(result, characterOwners);
         ApplyEquipment(result, characterOwners, catalogue, savedItems);
@@ -181,9 +182,76 @@ internal sealed class NewAgeSaveParser
         }
     }
 
+    private void ApplyBaseAbilities(SaveImportResult result, Dictionary<string, uint> characterOwners)
+    {
+        if (!_components.TryGetValue("game.character_creation.v1.CharacterCreationStatsComponent", out var creationComponent)
+            || !_components.TryGetValue("game.character_creation.v3.LevelUpComponent", out var levelUpComponent)
+            || !_components.TryGetValue("game.character_creation.v3.LevelUpComponentData", out var levelDataComponent)
+            || !_components.TryGetValue("game.character_creation.v2.LevelUpComponentSelectors", out var selectorsComponent))
+            return;
+
+        var creationElements = ElementByOwner(creationComponent);
+        var levelUpElements = ElementByOwner(levelUpComponent);
+        foreach (var pair in characterOwners)
+        {
+            var snapshot = FindCharacter(result, pair.Key);
+            if (snapshot is null
+                || !creationElements.TryGetValue(pair.Value, out var creationElement)
+                || !levelUpElements.TryGetValue(pair.Value, out var levelUpElement))
+                continue;
+
+            var creationRecord = Record(creationComponent, creationElement);
+            var allocationStart = ReadInt64(creationRecord + 72);
+            var allocationEnd = ReadInt64(creationRecord + 80);
+            if (!ValidRange(allocationStart, allocationEnd, 4) || allocationEnd - allocationStart < 28)
+                continue;
+
+            var baseAbilities = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            for (var index = 0; index < CharacterCalculator.AbilityNames.Length; index++)
+            {
+                // The first allocation entry is EAbility::None. Entries 1..6 store
+                // the amount above the level-1 floor of 8.
+                var allocation = ReadInt32(Relative(allocationStart + (index + 1) * 4L));
+                if (allocation is < 0 or > 12)
+                {
+                    baseAbilities.Clear();
+                    break;
+                }
+                baseAbilities[CharacterCalculator.AbilityNames[index]] = 8 + allocation;
+            }
+            if (baseAbilities.Count != CharacterCalculator.AbilityNames.Length)
+                continue;
+
+            var levelRecord = Record(levelUpComponent, levelUpElement);
+            var levelsStart = ReadInt64(levelRecord);
+            var levelsEnd = ReadInt64(levelRecord + 8);
+            if (ValidRange(levelsStart, levelsEnd, 8) && levelsStart < levelsEnd)
+            {
+                var firstLevelPointer = ReadInt64(Relative(levelsStart));
+                var delta = firstLevelPointer - levelDataComponent.Offset;
+                if (delta >= 0 && delta % levelDataComponent.Size == 0)
+                {
+                    var dataElement = (int)(delta / levelDataComponent.Size);
+                    if (dataElement >= 0 && dataElement < selectorsComponent.Elements)
+                    {
+                        foreach (var bonus in ReadAbilityBonuses(dataElement, selectorsComponent))
+                            baseAbilities[bonus.Ability] = Math.Min(20, baseAbilities[bonus.Ability] + bonus.Value);
+                    }
+                }
+            }
+
+            snapshot.BaseAbilities.Clear();
+            foreach (var ability in baseAbilities)
+                snapshot.BaseAbilities[ability.Key] = ability.Value;
+            snapshot.HasBaseAbilityData = true;
+        }
+    }
+
     private void ApplyFeats(SaveImportResult result, Dictionary<string, uint> characterOwners)
     {
-        if (!_components.TryGetValue("game.character_creation.v3.LevelUpComponent", out var levelUp))
+        if (!_components.TryGetValue("game.character_creation.v3.LevelUpComponent", out var levelUp)
+            || !_components.TryGetValue("game.character_creation.v3.LevelUpComponentData", out var levelDataComponent)
+            || !_components.TryGetValue("game.character_creation.v2.LevelUpComponentSelectors", out var selectorsComponent))
             return;
         var elements = ElementByOwner(levelUp);
         foreach (var pair in characterOwners)
@@ -203,12 +271,20 @@ internal sealed class NewAgeSaveParser
                 var levelData = ReadInt64(Relative(cursor));
                 if (!ValidRelative(levelData + 32, 16))
                     continue;
+                var dataDelta = levelData - levelDataComponent.Offset;
+                var dataElement = dataDelta >= 0 && dataDelta % levelDataComponent.Size == 0
+                    ? (int)(dataDelta / levelDataComponent.Size)
+                    : -1;
                 var classId = ReadLarianGuid(Relative(levelData));
                 if (classId != Guid.Empty)
                     classIds.Add(classId);
                 var featId = ReadLarianGuid(Relative(levelData + 32));
                 if (FeatNames.TryGetValue(featId, out var name))
-                    snapshot.Feats.Add(new FeatSelection { Name = name, Choice = "" });
+                    snapshot.Feats.Add(new FeatSelection
+                    {
+                        Name = name,
+                        Choice = ReadFeatChoice(name, dataElement, selectorsComponent)
+                    });
             }
             var distinctClassIds = classIds.Distinct().ToList();
             var classNames = new[] { snapshot.StartingClass }
@@ -225,6 +301,168 @@ internal sealed class NewAgeSaveParser
             snapshot.HasFeatData = true;
         }
     }
+
+    private List<(string Ability, int Value)> ReadAbilityBonuses(int dataElement, Component selectorsComponent)
+    {
+        if (!_components.TryGetValue("game.character_creation.v2.AbilityBonusSelector", out var bonusComponent))
+            return [];
+        var selectorsRecord = Record(selectorsComponent, dataElement);
+        var start = ReadInt64(selectorsRecord + 16);
+        var end = ReadInt64(selectorsRecord + 24);
+        if (!ValidRange(start, end, 8))
+            return [];
+
+        var result = new List<(string Ability, int Value)>();
+        for (var cursor = start; cursor < end; cursor += 8)
+        {
+            var selectorPointer = ReadInt64(Relative(cursor));
+            var delta = selectorPointer - bonusComponent.Offset;
+            if (delta < 0 || delta % bonusComponent.Size != 0)
+                continue;
+            var element = (int)(delta / bonusComponent.Size);
+            if (element < 0 || element >= bonusComponent.Elements)
+                continue;
+            var record = Record(bonusComponent, element);
+            var abilities = ReadAbilitySlots(ReadInt64(record + 24), ReadInt64(record + 32));
+            var valuesStart = ReadInt64(record + 40);
+            var valuesEnd = ReadInt64(record + 48);
+            if (!ValidRange(valuesStart, valuesEnd, 4))
+                continue;
+            var values = new List<int>();
+            for (var valueCursor = valuesStart; valueCursor < valuesEnd; valueCursor += 4)
+                values.Add(ReadInt32(Relative(valueCursor)));
+            for (var index = 0; index < Math.Min(abilities.Count, values.Count); index++)
+                if (values[index] is > 0 and <= 4)
+                    result.Add((abilities[index], values[index]));
+        }
+        return result;
+    }
+
+    private string ReadFeatChoice(string featName, int dataElement, Component selectorsComponent)
+    {
+        if (dataElement < 0 || dataElement >= selectorsComponent.Elements)
+            return "";
+        var selectorsRecord = Record(selectorsComponent, dataElement);
+        var selectedAbilities = new List<string>();
+        if (_components.TryGetValue("game.character_creation.v2.AbilitySelector", out var abilitySelectorComponent))
+        {
+            var start = ReadInt64(selectorsRecord);
+            var end = ReadInt64(selectorsRecord + 8);
+            if (ValidRange(start, end, 8))
+            {
+                for (var cursor = start; cursor < end; cursor += 8)
+                {
+                    var selectorPointer = ReadInt64(Relative(cursor));
+                    var delta = selectorPointer - abilitySelectorComponent.Offset;
+                    if (delta < 0 || delta % abilitySelectorComponent.Size != 0)
+                        continue;
+                    var element = (int)(delta / abilitySelectorComponent.Size);
+                    if (element < 0 || element >= abilitySelectorComponent.Elements)
+                        continue;
+                    var record = Record(abilitySelectorComponent, element);
+                    selectedAbilities.AddRange(ReadAbilitySlots(ReadInt64(record + 24), ReadInt64(record + 32)));
+                }
+            }
+        }
+
+        if (featName.Equals("Ability Improvement", StringComparison.OrdinalIgnoreCase) && selectedAbilities.Count > 0)
+        {
+            var counts = selectedAbilities
+                .GroupBy(value => value, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+            if (counts.Count == 1 && counts.Values.Single() >= 2)
+                return $"{counts.Keys.Single()} +2";
+            var ordered = CharacterCalculator.AbilityNames.Where(counts.ContainsKey).Take(2).ToArray();
+            if (ordered.Length == 2)
+                return $"{ordered[0]} +1 / {ordered[1]} +1";
+        }
+
+        if (selectedAbilities.Count > 0)
+            return selectedAbilities[0];
+
+        foreach (var passive in ReadSelectedPassives(selectorsRecord))
+        {
+            var separator = passive.LastIndexOf('_');
+            if (separator < 0)
+                continue;
+            var choice = AbilityFromName(passive[(separator + 1)..]);
+            if (!string.IsNullOrEmpty(choice))
+                return choice;
+        }
+
+        var definition = BuildOptions.FindFeat(featName);
+        return definition?.Choices.Length == 1 ? definition.Choices[0] : "";
+    }
+
+    private List<string> ReadAbilitySlots(long start, long end)
+    {
+        if (!_components.TryGetValue("game.character_creation.v1.AbilityAddSlot", out var slotComponent)
+            || !_components.TryGetValue("game.character_creation.v1.EAbility", out var abilityComponent)
+            || !ValidRange(start, end, slotComponent.Size)
+            || start < slotComponent.Offset
+            || end > slotComponent.Offset + (long)slotComponent.Size * slotComponent.Elements)
+            return [];
+        var result = new List<string>();
+        for (var cursor = start; cursor < end; cursor += slotComponent.Size)
+        {
+            var abilityPointer = ReadInt64(Relative(cursor));
+            var abilityDelta = abilityPointer - abilityComponent.Offset;
+            if (abilityDelta < 0 || abilityDelta % abilityComponent.Size != 0)
+                continue;
+            var abilityElement = (int)(abilityDelta / abilityComponent.Size);
+            if (abilityElement < 0 || abilityElement >= abilityComponent.Elements)
+                continue;
+            var ability = AbilityFromValue(ReadInt32(Record(abilityComponent, abilityElement)));
+            if (!string.IsNullOrEmpty(ability))
+                result.Add(ability);
+        }
+        return result;
+    }
+
+    private List<string> ReadSelectedPassives(int selectorsRecord)
+    {
+        if (!_components.TryGetValue("game.character_creation.v2.PassiveSelector", out var passiveComponent))
+            return [];
+        var start = ReadInt64(selectorsRecord + 80);
+        var end = ReadInt64(selectorsRecord + 88);
+        if (!ValidRange(start, end, 8))
+            return [];
+        var result = new List<string>();
+        for (var cursor = start; cursor < end; cursor += 8)
+        {
+            var selectorPointer = ReadInt64(Relative(cursor));
+            var delta = selectorPointer - passiveComponent.Offset;
+            if (delta < 0 || delta % passiveComponent.Size != 0)
+                continue;
+            var element = (int)(delta / passiveComponent.Size);
+            if (element < 0 || element >= passiveComponent.Elements)
+                continue;
+            var record = Record(passiveComponent, element);
+            var slotsStart = ReadInt64(record + 24);
+            var slotsEnd = ReadInt64(record + 32);
+            if (!ValidRange(slotsStart, slotsEnd, 16))
+                continue;
+            for (var slot = slotsStart; slot < slotsEnd; slot += 16)
+            {
+                var textStart = ReadInt64(Relative(slot));
+                var textLength = ReadInt64(Relative(slot) + 8);
+                if (textLength is > 0 and <= 128 && ValidRelative(textStart, (int)textLength))
+                    result.Add(System.Text.Encoding.UTF8.GetString(_data, Relative(textStart), (int)textLength));
+            }
+        }
+        return result;
+    }
+
+    private static string AbilityFromValue(int value) => value switch
+    {
+        1 => "STR", 2 => "DEX", 3 => "CON", 4 => "INT", 5 => "WIS", 6 => "CHA", _ => ""
+    };
+
+    private static string AbilityFromName(string value) => value.ToLowerInvariant() switch
+    {
+        "strength" => "STR", "dexterity" => "DEX", "constitution" => "CON",
+        "intelligence" => "INT", "wisdom" => "WIS", "charisma" => "CHA", _ => ""
+    };
 
     private void ApplyEquipment(
         SaveImportResult result,

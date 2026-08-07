@@ -20,8 +20,8 @@ public sealed class MainForm : Form
     private readonly CheckedListBox _rarityList = new();
     private readonly ComboBox _typeBox = new();
     private readonly ComboBox _placeBox = new();
-    private readonly CheckBox _notesOnly = new();
-    private readonly CheckBox _equippedOnly = new();
+    private readonly CheckBox _notesOnly = new ModernCheckBox();
+    private readonly CheckBox _equippedOnly = new ModernCheckBox();
     private readonly ComboBox _foundBox = new();
     private readonly ComboBox _sortBox = new();
     private readonly ComboBox _directionBox = new();
@@ -47,6 +47,7 @@ public sealed class MainForm : Form
     private int _activeCharacterIndex;
     private readonly CharacterSheetPanel _characterSheet;
     private bool _applyingLanguage;
+    private bool _alwaysMaximized;
 
     public MainForm(List<ItemRecord> items)
     {
@@ -103,6 +104,12 @@ public sealed class MainForm : Form
         DrawToBitmap(bitmap, new Rectangle(Point.Empty, ClientSize));
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         bitmap.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+    }
+
+    public void EnableAlwaysMaximized()
+    {
+        _alwaysMaximized = true;
+        WindowState = FormWindowState.Maximized;
     }
 
     public void RunHeaderVisibilityTest(string reportPath)
@@ -396,6 +403,7 @@ public sealed class MainForm : Form
         _actList.Dock = DockStyle.Top;
         _actList.Height = 76;
         _actList.CheckOnClick = true;
+        _actList.Font = Theme.Body(9.5f);
         _actList.BackColor = Theme.Parchment;
         _actList.BorderStyle = BorderStyle.FixedSingle;
         layout.Controls.Add(_actList);
@@ -404,6 +412,7 @@ public sealed class MainForm : Form
         _rarityList.Dock = DockStyle.Top;
         _rarityList.Height = 100;
         _rarityList.CheckOnClick = true;
+        _rarityList.Font = Theme.Body(9.5f);
         _rarityList.BackColor = Theme.Parchment;
         _rarityList.BorderStyle = BorderStyle.FixedSingle;
         layout.Controls.Add(_rarityList);
@@ -517,6 +526,7 @@ public sealed class MainForm : Form
         _actList.Dock = DockStyle.Top;
         _actList.Height = 68;
         _actList.CheckOnClick = true;
+        _actList.Font = Theme.Body(9.5f);
         _actList.BackColor = Theme.Parchment;
         _actList.BorderStyle = BorderStyle.FixedSingle;
         layout.Controls.Add(_actList);
@@ -525,6 +535,7 @@ public sealed class MainForm : Form
         _rarityList.Dock = DockStyle.Top;
         _rarityList.Height = 92;
         _rarityList.CheckOnClick = true;
+        _rarityList.Font = Theme.Body(9.5f);
         _rarityList.BackColor = Theme.Parchment;
         _rarityList.BorderStyle = BorderStyle.FixedSingle;
         layout.Controls.Add(_rarityList);
@@ -618,10 +629,8 @@ public sealed class MainForm : Form
     {
         combo.Dock = DockStyle.Top;
         combo.DropDownStyle = ComboBoxStyle.DropDownList;
-        combo.FlatStyle = FlatStyle.Flat;
-        combo.BackColor = Theme.Parchment;
-        combo.ForeColor = Theme.Ink;
         combo.Margin = new Padding(0, 0, 0, 8);
+        Theme.ConfigureModernCombo(combo, 9.5f);
     }
 
     private void BuildRightPanel(Control host)
@@ -695,7 +704,8 @@ public sealed class MainForm : Form
             MinimumWidth = 44,
             Frozen = true,
             ReadOnly = true,
-            ToolTipText = "Gevonden / opgehaald"
+            ToolTipText = "Gevonden / opgehaald",
+            FlatStyle = FlatStyle.Flat
         });
         for (var characterIndex = 0; characterIndex < 4; characterIndex++)
         {
@@ -706,7 +716,8 @@ public sealed class MainForm : Form
                 Width = 42,
                 MinimumWidth = 42,
                 Frozen = true,
-                ReadOnly = true
+                ReadOnly = true,
+                FlatStyle = FlatStyle.Flat
             });
         }
         AddColumn("Act", nameof(ItemRecord.Act), 62, frozen: true);
@@ -987,7 +998,16 @@ public sealed class MainForm : Form
         Resize += (_, _) =>
         {
             LayoutContentArea();
+            if (_alwaysMaximized && Visible && WindowState == FormWindowState.Normal)
+                BeginInvoke(() => WindowState = FormWindowState.Maximized);
         };
+        DpiChanged += (_, _) => BeginInvoke(() =>
+        {
+            LayoutContentArea();
+            _mainSplit.PerformLayout();
+            _contentCharacterSplit.PerformLayout();
+            _rightSplit.PerformLayout();
+        });
         Shown += async (_, _) =>
         {
             LayoutContentArea();

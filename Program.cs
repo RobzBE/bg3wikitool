@@ -64,7 +64,9 @@ internal static class Program
                 testForm.Close();
                 return;
             }
-            Application.Run(new MainForm(items));
+            using var mainForm = new MainForm(items);
+            mainForm.EnableAlwaysMaximized();
+            Application.Run(mainForm);
         }
         catch (Exception exception)
         {

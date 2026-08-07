@@ -180,14 +180,14 @@ internal static partial class CharacterCalculator
         activeEffects.AddRange(PermanentBonusEffects(state));
         var startingProfile = Profiles.GetValueOrDefault(state.ClassName, Profiles["Fighter"]);
         var abilities = AbilityNames.ToDictionary(name => name, state.GetAbility, StringComparer.OrdinalIgnoreCase);
-        // Patch 8 saves expose already-calculated current scores. Do not apply
-        // feat, permanent and equipment ability changes a second time after import.
-        if (!state.ImportedCurrentAbilities)
-        {
-            ApplyFeatAbilityChanges(state, abilities);
-            ApplyPermanentAbilityChanges(state, abilities);
-            ApplyEquipmentAbilityChanges(abilities, equipped);
-        }
+        ApplyFeatAbilityChanges(state, abilities);
+        ApplyPermanentAbilityChanges(state, abilities);
+        ApplyEquipmentAbilityChanges(abilities, equipped);
+        // Keep the exact live totals from an imported save. The editable fields
+        // remain the real level-1 scores; any manual build/gear edit clears these.
+        if (state.ImportedCurrentAbilities)
+            foreach (var pair in state.ImportedAbilityTotals.Where(pair => AbilityNames.Contains(pair.Key, StringComparer.OrdinalIgnoreCase) && pair.Value is >= 1 and <= 40))
+                abilities[pair.Key] = pair.Value;
         var buildWarnings = ValidateBuildOptions(state, abilities, equipped, startingProfile);
         var nonProficientGear = equipped.Where(item => !IsArmourProficient(state, startingProfile, item)).Select(item => item.Name).ToList();
 
@@ -432,6 +432,8 @@ internal static partial class CharacterCalculator
             };
             if (state.HasBuff("Mage Armour") && !wearingArmour)
                 candidates.Add((13 + dex, Localization.Format("AcMageArmour", Signed(dex))));
+            if (state.GetSubclass("Sorcerer").Equals("Draconic Bloodline", StringComparison.OrdinalIgnoreCase) && !wearingArmour)
+                candidates.Add((13 + dex, Localization.Format("AcDraconicResilience", Signed(dex))));
             if (state.HasClass("Barbarian") && !wearingArmour)
                 candidates.Add((10 + dex + Modifier(abilities["CON"]), Localization.Format("AcBarbarian", Signed(dex), Signed(Modifier(abilities["CON"])))));
             if (state.HasClass("Monk") && !wearingArmour && !shield)

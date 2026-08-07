@@ -35,4 +35,35 @@ internal static class Theme
         "Legendary" => Color.FromArgb(139, 90, 18),
         _ => Ink
     };
+
+    public static void ConfigureModernCombo(ComboBox combo, float fontSize = 9.5f)
+    {
+        combo.FlatStyle = FlatStyle.Flat;
+        combo.BackColor = Color.White;
+        combo.ForeColor = Ink;
+        combo.Font = Body(fontSize);
+        combo.DrawMode = DrawMode.OwnerDrawFixed;
+        combo.ItemHeight = 30;
+        combo.IntegralHeight = false;
+        combo.DropDownHeight = 300;
+        combo.DrawItem += DrawComboItem;
+    }
+
+    private static void DrawComboItem(object? sender, DrawItemEventArgs e)
+    {
+        if (sender is not ComboBox combo)
+            return;
+        var selected = (e.State & DrawItemState.Selected) != 0;
+        using var background = new SolidBrush(selected ? Color.FromArgb(232, 216, 181) : Color.White);
+        e.Graphics.FillRectangle(background, e.Bounds);
+        if (e.Index >= 0)
+        {
+            var text = combo.GetItemText(combo.Items[e.Index]);
+            var bounds = new Rectangle(e.Bounds.X + 9, e.Bounds.Y, Math.Max(0, e.Bounds.Width - 13), e.Bounds.Height);
+            TextRenderer.DrawText(e.Graphics, text, combo.Font, bounds, Ink,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        }
+        if ((e.State & DrawItemState.Focus) != 0)
+            e.DrawFocusRectangle();
+    }
 }

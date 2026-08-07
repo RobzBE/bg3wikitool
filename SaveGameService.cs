@@ -24,10 +24,12 @@ internal sealed class SaveCharacterSnapshot
     public Dictionary<string, int> ClassLevels { get; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, string> Subclasses { get; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, int> Abilities { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, int> BaseAbilities { get; } = new(StringComparer.OrdinalIgnoreCase);
     public List<string> EquippedKeys { get; } = [];
     public List<FeatSelection> Feats { get; } = [];
     public Dictionary<string, string> FightingStyles { get; } = new(StringComparer.OrdinalIgnoreCase);
     public bool HasAbilityData { get; set; }
+    public bool HasBaseAbilityData { get; set; }
     public bool HasEquipmentData { get; set; }
     public bool HasFeatData { get; set; }
     public bool HasFightingStyleData { get; set; }
@@ -219,13 +221,19 @@ internal static class SaveGameService
         }
         if (source.Subclasses.Count == 0 && !string.IsNullOrWhiteSpace(source.Subclass))
             target.SetSubclass(target.ClassName, source.Subclass);
-        foreach (var pair in source.Abilities.Where(pair => pair.Value is >= 3 and <= 30))
+        var importedBase = source.HasBaseAbilityData ? source.BaseAbilities : source.Abilities;
+        foreach (var pair in importedBase.Where(pair => pair.Value is >= 3 and <= 30))
         {
             target.SetAbility(pair.Key, pair.Value);
             changed = true;
         }
         if (source.HasAbilityData)
+        {
             target.ImportedCurrentAbilities = true;
+            target.ImportedAbilityTotals = source.Abilities
+                .Where(pair => pair.Value is >= 3 and <= 40)
+                .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+        }
         if (source.HasEquipmentData)
         {
             target.EquippedKeys = source.EquippedKeys.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
