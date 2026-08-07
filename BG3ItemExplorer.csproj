@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\BG3-Item-Explorer.ico</ApplicationIcon>
+    <AssemblyName>BG3-Item-Explorer</AssemblyName>
+    <RootNamespace>BG3ItemExplorer</RootNamespace>
+    <Version>1.0.0</Version>
+    <Authors>Robrecht</Authors>
+    <Product>BG3 Item Explorer</Product>
+    <Description>Portable searchable Baldur's Gate 3 item index.</Description>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Data\items.json" />
+    <EmbeddedResource Include="Data\item-images.zip" />
+    <EmbeddedResource Include="Fonts\Alegreya.ttf" />
+    <EmbeddedResource Include="Fonts\Alegreya-Italic.ttf" />
+  </ItemGroup>
+</Project>

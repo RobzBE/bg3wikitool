@@ -1,0 +1,7 @@
+bin/
+obj/
+publish/
+*.user
+*.suo
+BG3-Item-Explorer-progress.json
+BG3-Item-Explorer-progress.json.tmp
