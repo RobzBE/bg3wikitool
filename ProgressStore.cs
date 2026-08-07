@@ -30,7 +30,8 @@ internal sealed class ProgressStore
             {
                 FoundKeys = state?.FoundKeys?.ToHashSet(StringComparer.OrdinalIgnoreCase) ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
                 Characters = characters,
-                ActiveCharacterIndex = Math.Clamp(state?.ActiveCharacterIndex ?? 0, 0, 3)
+                ActiveCharacterIndex = Math.Clamp(state?.ActiveCharacterIndex ?? 0, 0, 3),
+                SaveLink = state?.SaveLink ?? new SaveLinkState()
             };
         }
         catch
@@ -47,7 +48,7 @@ internal sealed class ProgressStore
         Save(items, [character], 0);
     }
 
-    public void Save(IEnumerable<ItemRecord> items, IReadOnlyList<CharacterState> characters, int activeCharacterIndex)
+    public void Save(IEnumerable<ItemRecord> items, IReadOnlyList<CharacterState> characters, int activeCharacterIndex, SaveLinkState? saveLink = null)
     {
         var normalizedCharacters = characters.Take(4).ToList();
         NormalizeCharacters(normalizedCharacters);
@@ -58,7 +59,8 @@ internal sealed class ProgressStore
             UpdatedUtc = DateTime.UtcNow,
             FoundKeys = items.Where(item => item.Found).Select(item => item.ProgressKey).OrderBy(key => key).ToList(),
             Characters = normalizedCharacters,
-            ActiveCharacterIndex = activeIndex
+            ActiveCharacterIndex = activeIndex,
+            SaveLink = saveLink ?? new SaveLinkState()
         };
         var json = JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true });
         var temporary = _path + ".tmp";
@@ -74,6 +76,7 @@ internal sealed class ProgressStore
         public CharacterState? Character { get; init; }
         public List<CharacterState>? Characters { get; init; }
         public int ActiveCharacterIndex { get; init; }
+        public SaveLinkState? SaveLink { get; init; }
     }
 
     private static void NormalizeCharacters(List<CharacterState> characters)
@@ -100,5 +103,6 @@ internal sealed class AppProgressState
         new() { Name = "Character 3" }, new() { Name = "Character 4" }
     ];
     public int ActiveCharacterIndex { get; init; }
+    public SaveLinkState SaveLink { get; init; } = new();
     public CharacterState Character => Characters[Math.Clamp(ActiveCharacterIndex, 0, Characters.Count - 1)];
 }

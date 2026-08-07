@@ -21,11 +21,18 @@
     <PublishTrimmed>false</PublishTrimmed>
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="artifacts\**\*.cs" />
     <EmbeddedResource Include="Data\items.json" />
     <EmbeddedResource Include="Data\item-images.zip" />
     <EmbeddedResource Include="Fonts\Alegreya.ttf" />
     <EmbeddedResource Include="Fonts\Alegreya-Italic.ttf" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="K4os.Compression.LZ4" Version="1.3.8" />
+    <PackageReference Include="K4os.Compression.LZ4.Streams" Version="1.3.8" />
+    <PackageReference Include="ZstdSharp.Port" Version="0.8.7" />
   </ItemGroup>
 </Project>

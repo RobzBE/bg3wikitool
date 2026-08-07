@@ -104,6 +104,12 @@ internal sealed class CharacterSheetPanel : UserControl
         RefreshCalculations();
     }
 
+    public void RefreshFromSaveImport()
+    {
+        LoadStateIntoControls();
+        RefreshCalculations();
+    }
+
     public CharacterState CurrentState => _state;
     public int ActiveTemplateIndex => _activeTemplateIndex;
     public bool CalculationToolTipsReady =>

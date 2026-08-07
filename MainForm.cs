@@ -26,6 +26,17 @@ public sealed class MainForm : Form
     private readonly ComboBox _sortBox = new();
     private readonly ComboBox _directionBox = new();
     private readonly Label _resultLabel = new();
+    private readonly Label _saveStatus = new();
+    private readonly Button _linkNewestSave = new();
+    private readonly Button _browseSave = new();
+    private readonly Button _syncSave = new();
+    private readonly Button _unlinkSave = new();
+    private readonly ToolTip _saveToolTip = new() { AutoPopDelay = 30000, InitialDelay = 300, ShowAlways = true };
+    private readonly System.Windows.Forms.Timer _saveDebounceTimer = new() { Interval = 1800 };
+    private FileSystemWatcher? _saveWatcher;
+    private readonly SaveLinkState _saveLink;
+    private bool _saveSyncing;
+    private bool _saveSyncPending;
     private readonly DataGridView _grid = new();
     private readonly Label _detailTitle = new();
     private readonly Label _detailMeta = new();
@@ -42,6 +53,7 @@ public sealed class MainForm : Form
         _allItems = items;
         var progress = _progressStore.LoadState();
         _characters = progress.Characters;
+        _saveLink = progress.SaveLink;
         _activeCharacterIndex = Math.Clamp(progress.ActiveCharacterIndex, 0, _characters.Count - 1);
         var activeCharacter = _characters[_activeCharacterIndex];
         foreach (var item in _allItems)
@@ -76,6 +88,7 @@ public sealed class MainForm : Form
         WireEvents();
         ApplyLanguage();
         ApplyFilters();
+        ConfigureSaveWatcher();
     }
 
     public void RenderPreview(string path)
@@ -200,14 +213,26 @@ public sealed class MainForm : Form
     private void BuildHeader()
     {
         _headerPanel.Dock = DockStyle.Top;
-        _headerPanel.Height = 72;
+        _headerPanel.Height = 88;
         _headerPanel.BackColor = Theme.CrimsonDark;
         _headerPanel.Padding = new Padding(20, 8, 20, 8);
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            Margin = new Padding(0),
+            Padding = new Padding(0)
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 43));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 57));
+
+        var identity = new Panel { Dock = DockStyle.Fill, Margin = new Padding(0) };
         var title = new Label
         {
             Text = "BALDUR'S GATE 3  •  ITEM EXPLORER",
             Dock = DockStyle.Top,
-            Height = 34,
+            Height = 38,
             ForeColor = Theme.GoldLight,
             Font = Theme.Heading(19f),
             TextAlign = ContentAlignment.MiddleLeft
@@ -215,16 +240,55 @@ public sealed class MainForm : Form
         var subtitle = new Label
         {
             Text = "Act 1, 2 & 3 • offline • volledige iteminformatie • data & afbeeldingen: bg3.wiki",
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.Bottom,
+            Height = 24,
             ForeColor = Color.FromArgb(223, 205, 170),
             Font = Theme.Body(9f, FontStyle.Italic),
             TextAlign = ContentAlignment.MiddleLeft
         };
         subtitle.Text = Localization.T("Subtitle");
         subtitle.Tag = "i18n:Subtitle";
-        _headerPanel.Controls.Add(subtitle);
-        _headerPanel.Controls.Add(title);
+        identity.Controls.Add(title);
+        identity.Controls.Add(subtitle);
+
+        var saveArea = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(8, 0, 0, 0),
+            Padding = new Padding(0, 20, 0, 0),
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false
+        };
+        _saveStatus.Size = new Size(245, 25);
+        _saveStatus.Margin = new Padding(8, 1, 0, 0);
+        _saveStatus.TextAlign = ContentAlignment.MiddleRight;
+        _saveStatus.ForeColor = Color.FromArgb(223, 205, 170);
+        _saveStatus.Font = Theme.Body(8.5f, FontStyle.Bold);
+        _saveStatus.AutoEllipsis = true;
+        ConfigureHeaderButton(_unlinkSave, "UnlinkSave", 74);
+        ConfigureHeaderButton(_browseSave, "BrowseSave", 74);
+        ConfigureHeaderButton(_linkNewestSave, "LinkNewestSave", 112);
+        ConfigureHeaderButton(_syncSave, "SyncSave", 70);
+        saveArea.Controls.AddRange([_saveStatus, _unlinkSave, _browseSave, _linkNewestSave, _syncSave]);
+        layout.Controls.Add(identity, 0, 0);
+        layout.Controls.Add(saveArea, 1, 0);
+        _headerPanel.Controls.Add(layout);
         Controls.Add(_headerPanel);
+        RefreshSaveStatus();
+    }
+
+    private static void ConfigureHeaderButton(Button button, string localizationKey, int width)
+    {
+        button.Text = Localization.T(localizationKey);
+        button.Tag = "i18n:" + localizationKey;
+        button.Size = new Size(width, 25);
+        button.Margin = new Padding(5, 1, 0, 0);
+        button.FlatStyle = FlatStyle.Flat;
+        button.FlatAppearance.BorderColor = Theme.Gold;
+        button.BackColor = Theme.CrimsonDark;
+        button.ForeColor = Theme.GoldLight;
+        button.Font = Theme.Body(7.5f, FontStyle.Bold);
+        button.Cursor = Cursors.Hand;
     }
 
     private void BuildLayout()
@@ -790,6 +854,7 @@ public sealed class MainForm : Form
             _grid.Columns[nameof(ItemRecord.Description)]!.HeaderText = Localization.T("GridDescription");
             _grid.Columns[nameof(ItemRecord.NotesText)]!.HeaderText = Localization.T("GridNotes");
             _characterSheet.SetLanguage();
+            RefreshSaveStatus();
         }
         finally
         {
@@ -841,6 +906,15 @@ public sealed class MainForm : Form
         _foundBox.SelectedIndexChanged += (_, _) => ApplyFilters();
         _sortBox.SelectedIndexChanged += (_, _) => ApplyFilters();
         _directionBox.SelectedIndexChanged += (_, _) => ApplyFilters();
+        _linkNewestSave.Click += async (_, _) => await LinkNewestSaveAsync();
+        _browseSave.Click += async (_, _) => await BrowseAndLinkSaveAsync();
+        _syncSave.Click += async (_, _) => await SyncLinkedSaveAsync(force: true, showErrors: true);
+        _unlinkSave.Click += (_, _) => UnlinkSave();
+        _saveDebounceTimer.Tick += async (_, _) =>
+        {
+            _saveDebounceTimer.Stop();
+            await SyncLinkedSaveAsync(force: true, showErrors: false);
+        };
         _characterSheet.StateChanged += (_, _) =>
         {
             UpdateEquipmentColumnHeaders();
@@ -870,14 +944,19 @@ public sealed class MainForm : Form
         {
             LayoutContentArea();
         };
-        Shown += (_, _) =>
+        Shown += async (_, _) =>
         {
             LayoutContentArea();
+            if (!string.IsNullOrWhiteSpace(_saveLink.LinkedSavePath))
+                await SyncLinkedSaveAsync(force: false, showErrors: false);
         };
         FormClosed += (_, _) =>
         {
             _itemPicture.Image?.Dispose();
             _imageRepository.Dispose();
+            _saveWatcher?.Dispose();
+            _saveDebounceTimer.Dispose();
+            _saveToolTip.Dispose();
         };
     }
 
@@ -1151,7 +1230,7 @@ public sealed class MainForm : Form
         item.Found = !item.Found;
         try
         {
-            _progressStore.Save(_allItems, _characters, _activeCharacterIndex);
+            _progressStore.Save(_allItems, _characters, _activeCharacterIndex, _saveLink);
         }
         catch (Exception exception)
         {
@@ -1195,7 +1274,7 @@ public sealed class MainForm : Form
     {
         try
         {
-            _progressStore.Save(_allItems, _characters, _activeCharacterIndex);
+            _progressStore.Save(_allItems, _characters, _activeCharacterIndex, _saveLink);
         }
         catch (Exception exception)
         {
@@ -1205,6 +1284,202 @@ public sealed class MainForm : Form
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
         }
+    }
+
+    private async Task LinkNewestSaveAsync()
+    {
+        var root = SaveGameService.DefaultStoryDirectory;
+        var newest = SaveGameService.FindNewestSupportedSave(root);
+        if (newest is null)
+        {
+            var answer = MessageBox.Show(
+                this,
+                Localization.Format("DefaultSaveMissing", root),
+                Localization.T("SaveGameLink"),
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Information);
+            if (answer == DialogResult.Yes)
+                await BrowseAndLinkSaveAsync();
+            return;
+        }
+        await LinkSaveAsync(newest, root);
+    }
+
+    private async Task BrowseAndLinkSaveAsync()
+    {
+        using var dialog = new OpenFileDialog
+        {
+            Title = Localization.T("BrowseSaveTitle"),
+            Filter = "Baldur's Gate 3 save (*.lsv)|*.lsv|All files (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false,
+            InitialDirectory = Directory.Exists(SaveGameService.DefaultStoryDirectory)
+                ? SaveGameService.DefaultStoryDirectory
+                : Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
+        };
+        if (dialog.ShowDialog(this) == DialogResult.OK)
+            await LinkSaveAsync(dialog.FileName, SaveGameService.FindWatchDirectory(dialog.FileName));
+    }
+
+    private async Task LinkSaveAsync(string savePath, string watchDirectory)
+    {
+        _saveLink.LinkedSavePath = Path.GetFullPath(savePath);
+        _saveLink.WatchDirectory = Path.GetFullPath(watchDirectory);
+        _saveLink.AutoSync = true;
+        _saveLink.LastImportedWriteUtc = null;
+        ConfigureSaveWatcher();
+        SaveProgressWithWarning();
+        await SyncLinkedSaveAsync(force: true, showErrors: true);
+    }
+
+    private void UnlinkSave()
+    {
+        _saveDebounceTimer.Stop();
+        _saveWatcher?.Dispose();
+        _saveWatcher = null;
+        _saveLink.LinkedSavePath = "";
+        _saveLink.WatchDirectory = "";
+        _saveLink.LastImportedWriteUtc = null;
+        SaveProgressWithWarning();
+        RefreshSaveStatus();
+    }
+
+    private void ConfigureSaveWatcher()
+    {
+        _saveWatcher?.Dispose();
+        _saveWatcher = null;
+        if (!_saveLink.AutoSync || string.IsNullOrWhiteSpace(_saveLink.WatchDirectory) || !Directory.Exists(_saveLink.WatchDirectory))
+        {
+            RefreshSaveStatus();
+            return;
+        }
+        try
+        {
+            _saveWatcher = new FileSystemWatcher(_saveLink.WatchDirectory, "*.lsv")
+            {
+                IncludeSubdirectories = true,
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size,
+                EnableRaisingEvents = true
+            };
+            _saveWatcher.Created += SaveFileChanged;
+            _saveWatcher.Changed += SaveFileChanged;
+            _saveWatcher.Renamed += SaveFileChanged;
+            RefreshSaveStatus();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            _saveStatus.Text = Localization.T("SaveWatcherError");
+            _saveToolTip.SetToolTip(_saveStatus, exception.Message);
+        }
+    }
+
+    private void SaveFileChanged(object? sender, FileSystemEventArgs eventArgs)
+    {
+        if (IsDisposed || eventArgs.FullPath.Contains("AutoSave_", StringComparison.OrdinalIgnoreCase))
+            return;
+        try
+        {
+            BeginInvoke((Action)(() =>
+            {
+                _saveDebounceTimer.Stop();
+                _saveDebounceTimer.Start();
+                _saveStatus.Text = Localization.T("SaveWaiting");
+            }));
+        }
+        catch (InvalidOperationException) { }
+    }
+
+    private async Task SyncLinkedSaveAsync(bool force, bool showErrors)
+    {
+        if (_saveSyncing)
+        {
+            _saveSyncPending = true;
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_saveLink.LinkedSavePath))
+        {
+            if (showErrors)
+                MessageBox.Show(this, Localization.T("NoLinkedSave"), Localization.T("SaveGameLink"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        var newest = SaveGameService.FindNewestSupportedSave(_saveLink.WatchDirectory);
+        if (newest is not null)
+            _saveLink.LinkedSavePath = newest;
+        if (!File.Exists(_saveLink.LinkedSavePath))
+        {
+            RefreshSaveStatus(Localization.T("SaveMissing"));
+            return;
+        }
+        var writeUtc = File.GetLastWriteTimeUtc(_saveLink.LinkedSavePath);
+        if (!force && _saveLink.LastImportedWriteUtc == writeUtc)
+            return;
+
+        _saveSyncing = true;
+        _syncSave.Enabled = false;
+        _saveStatus.Text = Localization.T("SaveSyncing");
+        try
+        {
+            var imported = await SaveGameService.ImportAsync(_saveLink.LinkedSavePath, _allItems);
+            ApplySaveImport(imported);
+            _saveLink.LastImportedWriteUtc = imported.WriteUtc;
+            SaveProgressWithWarning();
+            var details = imported.Warnings.Count == 0
+                ? Localization.Format("SaveImportDetails", imported.Characters.Count, imported.MatchedItems)
+                : Localization.Format("SaveImportDetails", imported.Characters.Count, imported.MatchedItems) + Environment.NewLine + string.Join(Environment.NewLine, imported.Warnings);
+            RefreshSaveStatus(Localization.Format("SaveSynced", SaveGameService.SaveKind(imported.SavePath), imported.WriteUtc.ToLocalTime().ToString("g")), details);
+            if (showErrors && imported.Warnings.Count > 0)
+                MessageBox.Show(this, details, Localization.T("SaveGameLink"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception exception)
+        {
+            RefreshSaveStatus(Localization.T("SaveSyncFailed"), exception.Message);
+            if (showErrors)
+                MessageBox.Show(this, Localization.Format("SaveImportError", exception.Message), Localization.T("SaveGameLink"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        finally
+        {
+            _saveSyncing = false;
+            _syncSave.Enabled = true;
+            if (_saveSyncPending)
+            {
+                _saveSyncPending = false;
+                _saveDebounceTimer.Stop();
+                _saveDebounceTimer.Start();
+            }
+        }
+    }
+
+    private void ApplySaveImport(SaveImportResult imported)
+    {
+        for (var sourceIndex = 0; sourceIndex < Math.Min(4, imported.Characters.Count); sourceIndex++)
+        {
+            var source = imported.Characters[sourceIndex];
+            var nameMatch = !string.IsNullOrWhiteSpace(source.Name)
+                ? _characters.FindIndex(character => character.Name.Equals(source.Name, StringComparison.OrdinalIgnoreCase))
+                : -1;
+            var targetIndex = nameMatch >= 0 ? nameMatch : imported.Characters.Count == 1 ? _activeCharacterIndex : sourceIndex;
+            SaveGameService.MergeInto(_characters[targetIndex], source);
+        }
+
+        var active = _characters[_activeCharacterIndex];
+        foreach (var item in _allItems)
+            item.Equipped = active.EquippedKeys.Contains(item.ProgressKey, StringComparer.OrdinalIgnoreCase);
+        _characterSheet.RefreshFromSaveImport();
+        UpdateEquipmentColumnHeaders();
+        ApplyFilters();
+    }
+
+    private void RefreshSaveStatus(string? status = null, string? details = null)
+    {
+        var linked = !string.IsNullOrWhiteSpace(_saveLink.LinkedSavePath);
+        _saveStatus.Text = status ?? (linked
+            ? Localization.Format("SaveLinked", Path.GetFileNameWithoutExtension(_saveLink.LinkedSavePath))
+            : Localization.T("SaveNotLinked"));
+        _saveStatus.ForeColor = linked ? Theme.GoldLight : Color.FromArgb(223, 205, 170);
+        _saveToolTip.SetToolTip(_saveStatus, details ?? (linked ? _saveLink.LinkedSavePath : Localization.T("SaveOptional")));
+        _syncSave.Enabled = linked && !_saveSyncing;
+        _unlinkSave.Enabled = linked;
     }
 
     private static Image CreatePlaceholderImage(string name)

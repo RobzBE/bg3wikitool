@@ -4,6 +4,33 @@ namespace BG3ItemExplorer;
 
 internal static class AppDiagnostics
 {
+    public static async Task WriteSaveImportReportAsync(List<ItemRecord> items, string savePath, string reportPath)
+    {
+        var imported = await SaveGameService.ImportAsync(savePath, items);
+        var report = new
+        {
+            imported.SavePath,
+            imported.SaveName,
+            imported.WriteUtc,
+            imported.MatchedItems,
+            imported.Warnings,
+            Characters = imported.Characters.Select(character => new
+            {
+                character.Name,
+                character.Race,
+                character.StartingClass,
+                character.Subclass,
+                character.Level,
+                character.IsMulticlass,
+                character.ClassLevels,
+                character.Abilities,
+                character.EquippedKeys
+            })
+        };
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(reportPath))!);
+        await File.WriteAllTextAsync(reportPath, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
     public static void WriteSelfTestReport(List<ItemRecord> items, string reportPath)
     {
         var uniqueProgressKeys = items.Select(item => item.ProgressKey).Distinct(StringComparer.OrdinalIgnoreCase).Count();
@@ -23,6 +50,8 @@ internal static class AppDiagnostics
         var progressRoundTrip = false;
         var characterRoundTrip = false;
         var templatesRoundTrip = false;
+        var saveLinkRoundTrip = false;
+        var saveDiscoveryApplied = false;
         try
         {
             var store = new ProgressStore(progressDirectory);
@@ -58,12 +87,39 @@ internal static class AppDiagnostics
                                  && !string.IsNullOrWhiteSpace(loadedState.Character.TemplateId);
             var templates = Enumerable.Range(1, 4).Select(index => new CharacterState { Name = $"Test Hero {index}" }).ToList();
             items[1].Equipped = true;
-            store.Save(items, templates, 2);
+            var localSaveLink = new SaveLinkState
+            {
+                WatchDirectory = Path.Combine(progressDirectory, "Story"),
+                LinkedSavePath = Path.Combine(progressDirectory, "Story", "QuickSave_1", "QuickSave_1.lsv"),
+                AutoSync = true,
+                LastImportedWriteUtc = new DateTime(2026, 8, 7, 12, 0, 0, DateTimeKind.Utc)
+            };
+            store.Save(items, templates, 2, localSaveLink);
             var loadedTemplates = store.LoadState();
             templatesRoundTrip = loadedTemplates.Characters.Count == 4
                                  && loadedTemplates.ActiveCharacterIndex == 2
                                  && loadedTemplates.Characters.Select(character => character.Name).SequenceEqual(["Test Hero 1", "Test Hero 2", "Test Hero 3", "Test Hero 4"])
                                  && loadedTemplates.Characters[2].EquippedKeys.Contains(items[1].ProgressKey);
+            saveLinkRoundTrip = loadedTemplates.SaveLink.LinkedSavePath == localSaveLink.LinkedSavePath
+                                && loadedTemplates.SaveLink.WatchDirectory == localSaveLink.WatchDirectory
+                                && loadedTemplates.SaveLink.AutoSync;
+
+            var story = Path.Combine(progressDirectory, "discovery", "Story");
+            var manual = Path.Combine(story, "Campaign-1", "Manual.lsv");
+            var quick = Path.Combine(story, "QuickSave_1", "Quick.lsv");
+            var auto = Path.Combine(story, "AutoSave_1", "Auto.lsv");
+            Directory.CreateDirectory(Path.GetDirectoryName(manual)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(quick)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(auto)!);
+            File.WriteAllBytes(manual, [1]);
+            File.WriteAllBytes(quick, [2]);
+            File.WriteAllBytes(auto, [3]);
+            File.SetLastWriteTimeUtc(manual, new DateTime(2026, 8, 7, 10, 0, 0, DateTimeKind.Utc));
+            File.SetLastWriteTimeUtc(quick, new DateTime(2026, 8, 7, 11, 0, 0, DateTimeKind.Utc));
+            File.SetLastWriteTimeUtc(auto, new DateTime(2026, 8, 7, 12, 0, 0, DateTimeKind.Utc));
+            saveDiscoveryApplied = SaveGameService.FindNewestSupportedSave(story) == quick
+                                   && SaveGameService.FindWatchDirectory(quick) == story
+                                   && SaveGameService.SaveKind(quick) == "QuickSave";
             items[0].Found = false;
             items[1].Equipped = false;
         }
@@ -360,7 +416,7 @@ internal static class AppDiagnostics
 
         var report = new
         {
-            Passed = items.Count == 556 && uniqueProgressKeys == items.Count && loadedImages == items.Count && progressRoundTrip && characterRoundTrip && templatesRoundTrip && templateGearSetsApplied && displacementMathApplied && difficultyMathApplied && worstCaseThreatsApplied && averageThreatsApplied && abilitySaveChancesApplied && characterBenchmarksApplied && naturalRollBoundsApplied && savingThrowRulesApplied && multiclassMathApplied && subclassOptionsApplied && featAndBuffMathApplied && permanentBonusMathApplied && templateSharingApplied && criticalMathApplied && criticalGearParsingApplied && thresholdFourteenApplied && calculationsExplained && FontManager.IsAlegreyaLoaded,
+            Passed = items.Count == 556 && uniqueProgressKeys == items.Count && loadedImages == items.Count && progressRoundTrip && characterRoundTrip && templatesRoundTrip && saveLinkRoundTrip && saveDiscoveryApplied && templateGearSetsApplied && displacementMathApplied && difficultyMathApplied && worstCaseThreatsApplied && averageThreatsApplied && abilitySaveChancesApplied && characterBenchmarksApplied && naturalRollBoundsApplied && savingThrowRulesApplied && multiclassMathApplied && subclassOptionsApplied && featAndBuffMathApplied && permanentBonusMathApplied && templateSharingApplied && criticalMathApplied && criticalGearParsingApplied && thresholdFourteenApplied && calculationsExplained && FontManager.IsAlegreyaLoaded,
             ItemCount = items.Count,
             ActCounts = items.GroupBy(item => item.Act).ToDictionary(group => group.Key, group => group.Count()),
             UniqueProgressKeys = uniqueProgressKeys,
@@ -370,6 +426,8 @@ internal static class AppDiagnostics
             ProgressRoundTrip = progressRoundTrip,
             CharacterRoundTrip = characterRoundTrip,
             TemplatesRoundTrip = templatesRoundTrip,
+            SaveLinkRoundTrip = saveLinkRoundTrip,
+            SaveDiscoveryApplied = saveDiscoveryApplied,
             TemplateGearSetsApplied = templateGearSetsApplied,
             DisplacementMathApplied = displacementMathApplied,
             BaselineAct1AttackChance = baselineStats.Threats[0].AttackHitChance,

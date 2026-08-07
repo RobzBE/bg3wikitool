@@ -21,6 +21,11 @@ internal static class Program
                 AppDiagnostics.WriteSelfTestReport(items, arguments[1]);
                 return;
             }
+            if (arguments.Length >= 3 && arguments[0] == "--save-self-test")
+            {
+                AppDiagnostics.WriteSaveImportReportAsync(items, arguments[1], arguments[2]).GetAwaiter().GetResult();
+                return;
+            }
             if (arguments.Length >= 2 && arguments[0] == "--render-preview")
             {
                 using var previewForm = new MainForm(items);
