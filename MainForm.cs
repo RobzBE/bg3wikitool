@@ -91,8 +91,10 @@ public sealed class MainForm : Form
         ConfigureSaveWatcher();
     }
 
-    public void RenderPreview(string path)
+    public void RenderPreview(string path, int? width = null, int? height = null)
     {
+        if (width.HasValue && height.HasValue)
+            Size = new Size(Math.Max(MinimumSize.Width, width.Value), Math.Max(MinimumSize.Height, height.Value));
         PerformLayout();
         _mainSplit.PerformLayout();
         _rightSplit.PerformLayout();
@@ -101,6 +103,35 @@ public sealed class MainForm : Form
         DrawToBitmap(bitmap, new Rectangle(Point.Empty, ClientSize));
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         bitmap.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+    }
+
+    public void RunHeaderVisibilityTest(string reportPath)
+    {
+        var results = new List<object>();
+        foreach (var requestedWidth in new[] { 1100, 1200, 1480 })
+        {
+            Size = new Size(requestedWidth, 700);
+            PerformLayout();
+            Application.DoEvents();
+            var headerBounds = _headerPanel.RectangleToScreen(_headerPanel.ClientRectangle);
+            var controls = new Control[] { _saveStatus, _linkNewestSave, _browseSave, _syncSave, _unlinkSave };
+            var controlResults = controls.Select(control => new
+            {
+                Name = control.Text,
+                control.Visible,
+                Bounds = control.RectangleToScreen(control.ClientRectangle),
+                FullyInsideHeader = control.Visible && headerBounds.Contains(control.RectangleToScreen(control.ClientRectangle))
+            }).ToList();
+            results.Add(new
+            {
+                RequestedWidth = requestedWidth,
+                ActualClientSize = ClientSize,
+                Passed = controlResults.All(result => result.FullyInsideHeader),
+                Controls = controlResults
+            });
+        }
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(reportPath))!);
+        File.WriteAllText(reportPath, System.Text.Json.JsonSerializer.Serialize(results, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
     }
 
     public void RunFilterStressTest(string reportPath)
@@ -251,16 +282,19 @@ public sealed class MainForm : Form
         identity.Controls.Add(title);
         identity.Controls.Add(subtitle);
 
-        var saveArea = new FlowLayoutPanel
+        var saveArea = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             Margin = new Padding(8, 0, 0, 0),
-            Padding = new Padding(0, 20, 0, 0),
-            FlowDirection = FlowDirection.RightToLeft,
-            WrapContents = false
+            Padding = new Padding(0),
+            ColumnCount = 1,
+            RowCount = 2
         };
-        _saveStatus.Size = new Size(245, 25);
-        _saveStatus.Margin = new Padding(8, 1, 0, 0);
+        saveArea.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        saveArea.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+        saveArea.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        _saveStatus.Dock = DockStyle.Fill;
+        _saveStatus.Margin = new Padding(0);
         _saveStatus.TextAlign = ContentAlignment.MiddleRight;
         _saveStatus.ForeColor = Color.FromArgb(223, 205, 170);
         _saveStatus.Font = Theme.Body(8.5f, FontStyle.Bold);
@@ -269,7 +303,17 @@ public sealed class MainForm : Form
         ConfigureHeaderButton(_browseSave, "BrowseSave", 74);
         ConfigureHeaderButton(_linkNewestSave, "LinkNewestSave", 112);
         ConfigureHeaderButton(_syncSave, "SyncSave", 70);
-        saveArea.Controls.AddRange([_saveStatus, _unlinkSave, _browseSave, _linkNewestSave, _syncSave]);
+        var saveButtons = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0),
+            Padding = new Padding(0, 3, 0, 0),
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false
+        };
+        saveButtons.Controls.AddRange([_unlinkSave, _browseSave, _linkNewestSave, _syncSave]);
+        saveArea.Controls.Add(_saveStatus, 0, 0);
+        saveArea.Controls.Add(saveButtons, 0, 1);
         layout.Controls.Add(identity, 0, 0);
         layout.Controls.Add(saveArea, 1, 0);
         _headerPanel.Controls.Add(layout);
@@ -1478,8 +1522,8 @@ public sealed class MainForm : Form
             : Localization.T("SaveNotLinked"));
         _saveStatus.ForeColor = linked ? Theme.GoldLight : Color.FromArgb(223, 205, 170);
         _saveToolTip.SetToolTip(_saveStatus, details ?? (linked ? _saveLink.LinkedSavePath : Localization.T("SaveOptional")));
-        _syncSave.Enabled = linked && !_saveSyncing;
-        _unlinkSave.Enabled = linked;
+        _syncSave.Enabled = !_saveSyncing;
+        _unlinkSave.Enabled = true;
     }
 
     private static Image CreatePlaceholderImage(string name)

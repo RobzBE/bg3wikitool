@@ -2,6 +2,12 @@
 
 A portable, offline Windows app for the Act 1, Act 2 and Act 3 items in the supplied **BG3 Item Index Cheat Sheet**. English is the default interface language; Dutch is available from the language selector.
 
+## Download
+
+[Download BG3 Item Explorer — Version 1.0](https://github.com/RobzBE/bg3wikitool/releases/download/v1.0/BG3-Item-Explorer.exe)
+
+The release is a self-contained Windows x64 executable. Download the single `.exe`, copy it to a writable folder or USB drive, and open it; no installer or separate .NET installation is required.
+
 ## Features
 
 - 20/50/30 default layout: search and filters on the left, item table/details in the centre, and a wider live character sheet on the right. Both splitters remain adjustable.

@@ -30,7 +30,9 @@ internal static class Program
             {
                 using var previewForm = new MainForm(items);
                 previewForm.Show();
-                previewForm.RenderPreview(arguments[1]);
+                var width = arguments.Length >= 4 && int.TryParse(arguments[2], out var parsedWidth) ? parsedWidth : (int?)null;
+                var height = arguments.Length >= 4 && int.TryParse(arguments[3], out var parsedHeight) ? parsedHeight : (int?)null;
+                previewForm.RenderPreview(arguments[1], width, height);
                 previewForm.Close();
                 return;
             }
@@ -41,6 +43,15 @@ internal static class Program
                 previewForm.Show();
                 previewForm.RenderPreview(arguments[1]);
                 previewForm.Close();
+                return;
+            }
+            if (arguments.Length >= 2 && arguments[0] == "--header-self-test")
+            {
+                using var testForm = new MainForm(items);
+                testForm.Show();
+                Application.DoEvents();
+                testForm.RunHeaderVisibilityTest(arguments[1]);
+                testForm.Close();
                 return;
             }
             if (arguments.Length >= 2 && arguments[0] == "--filter-self-test")
