@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using System.Diagnostics;
 
 namespace BG3ItemExplorer;
@@ -6,7 +5,8 @@ namespace BG3ItemExplorer;
 public sealed class MainForm : Form
 {
     private readonly List<ItemRecord> _allItems;
-    private readonly BindingList<ItemRecord> _visibleItems = [];
+    private List<ItemRecord> _visibleItems = [];
+    private readonly BindingSource _gridSource = new();
     private readonly ProgressStore _progressStore = new();
     private readonly ItemImageRepository _imageRepository = new();
     private readonly SplitContainer _mainSplit = new();
@@ -86,6 +86,67 @@ public sealed class MainForm : Form
         DrawToBitmap(bitmap, new Rectangle(Point.Empty, ClientSize));
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         bitmap.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+    }
+
+    public void RunFilterStressTest(string reportPath)
+    {
+        var iterations = 0;
+        string? failure = null;
+        try
+        {
+            var searches = new[] { "", "a", "shield", "absolute", "lower city", "zzzz-no-result", "ring", "", "cloak", "act 3", "" };
+            foreach (var search in searches)
+            {
+                if (_grid.Rows.Count > 301)
+                    _grid.CurrentCell = _grid.Rows[301].Cells[0];
+                _searchBox.Text = search;
+                Application.DoEvents();
+                iterations++;
+            }
+
+            for (var index = 0; index < _sortBox.Items.Count; index++)
+            {
+                _sortBox.SelectedIndex = index;
+                _directionBox.SelectedIndex = index % 2;
+                Application.DoEvents();
+                iterations++;
+            }
+
+            for (var index = 0; index < _foundBox.Items.Count; index++)
+            {
+                _foundBox.SelectedIndex = index;
+                Application.DoEvents();
+                iterations++;
+            }
+
+            _foundBox.SelectedIndex = 0;
+            for (var index = 0; index < _actList.Items.Count; index++)
+            {
+                _actList.SetItemChecked(index, false);
+                Application.DoEvents();
+                _actList.SetItemChecked(index, true);
+                Application.DoEvents();
+                iterations += 2;
+            }
+        }
+        catch (Exception exception)
+        {
+            failure = exception.ToString();
+        }
+        finally
+        {
+            ResetFilters();
+        }
+
+        var report = new
+        {
+            Passed = failure is null,
+            Iterations = iterations,
+            FinalVisibleItems = _visibleItems.Count,
+            Failure = failure
+        };
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(reportPath))!);
+        File.WriteAllText(reportPath, System.Text.Json.JsonSerializer.Serialize(report, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
     }
 
     private void BuildFooter()
@@ -457,7 +518,8 @@ public sealed class MainForm : Form
     {
         _grid.Dock = DockStyle.Fill;
         _grid.AutoGenerateColumns = false;
-        _grid.DataSource = _visibleItems;
+        _gridSource.DataSource = _visibleItems;
+        _grid.DataSource = _gridSource;
         _grid.ReadOnly = false;
         _grid.AllowUserToAddRows = false;
         _grid.AllowUserToDeleteRows = false;
@@ -831,12 +893,24 @@ public sealed class MainForm : Form
             query = query.Reverse();
 
         var selectedName = _grid.CurrentRow?.DataBoundItem is ItemRecord selected ? selected.Name : null;
-        _visibleItems.RaiseListChangedEvents = false;
-        _visibleItems.Clear();
-        foreach (var item in query)
-            _visibleItems.Add(item);
-        _visibleItems.RaiseListChangedEvents = true;
-        _visibleItems.ResetBindings();
+        var filteredItems = query.ToList();
+
+        // WinForms CurrencyManager retains the previous row position while a bound
+        // BindingList is cleared. Detaching before swapping the completed list keeps
+        // that transient position from indexing into an empty or shorter collection.
+        _grid.SuspendLayout();
+        try
+        {
+            _grid.DataSource = null;
+            _gridSource.DataSource = null;
+            _visibleItems = filteredItems;
+            _gridSource.DataSource = _visibleItems;
+            _grid.DataSource = _gridSource;
+        }
+        finally
+        {
+            _grid.ResumeLayout();
+        }
 
         _resultLabel.Text = Localization.Format("ResultCount", _visibleItems.Count, _allItems.Count(item => item.Found), _allItems.Count);
         if (_visibleItems.Count == 0)
@@ -847,7 +921,7 @@ public sealed class MainForm : Form
 
         var rowToSelect = selectedName is null
             ? 0
-            : Math.Max(0, _visibleItems.ToList().FindIndex(item => item.Name == selectedName));
+            : Math.Max(0, _visibleItems.FindIndex(item => item.Name == selectedName));
         _grid.ClearSelection();
         if (rowToSelect < _grid.Rows.Count)
         {

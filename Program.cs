@@ -40,6 +40,15 @@ internal static class Program
                 previewForm.Close();
                 return;
             }
+            if (arguments.Length >= 2 && arguments[0] == "--filter-self-test")
+            {
+                using var testForm = new MainForm(items);
+                testForm.Show();
+                Application.DoEvents();
+                testForm.RunFilterStressTest(arguments[1]);
+                testForm.Close();
+                return;
+            }
             Application.Run(new MainForm(items));
         }
         catch (Exception exception)
@@ -50,8 +59,17 @@ internal static class Program
                 Environment.ExitCode = 1;
                 return;
             }
+            var logPath = Path.Combine(AppContext.BaseDirectory, "BG3-Item-Explorer-error.log");
+            try
+            {
+                File.AppendAllText(logPath, $"[{DateTime.Now:O}]{Environment.NewLine}{exception}{Environment.NewLine}{Environment.NewLine}");
+            }
+            catch
+            {
+                logPath = "(log could not be written)";
+            }
             MessageBox.Show(
-                Localization.Format("LoadError", exception.Message),
+                Localization.Format("LoadError", exception.Message, logPath),
                 Localization.T("WarningTitle"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
