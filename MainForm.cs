@@ -10,6 +10,7 @@ public sealed class MainForm : Form
     private readonly ProgressStore _progressStore = new();
     private readonly ItemImageRepository _imageRepository = new();
     private readonly SplitContainer _mainSplit = new();
+    private readonly SplitContainer _contentCharacterSplit = new();
     private readonly SplitContainer _rightSplit = new();
     private readonly Panel _headerPanel = new();
     private readonly Panel _footerPanel = new();
@@ -30,15 +31,22 @@ public sealed class MainForm : Form
     private readonly RichTextBox _detailText = new();
     private readonly FlowLayoutPanel _linksPanel = new();
     private readonly PictureBox _itemPicture = new();
+    private readonly CharacterState _characterState;
+    private readonly CharacterSheetPanel _characterSheet;
     private bool _resizingSplit;
     private bool _applyingLanguage;
 
     public MainForm(List<ItemRecord> items)
     {
         _allItems = items;
-        var foundKeys = _progressStore.Load();
+        var progress = _progressStore.LoadState();
+        _characterState = progress.Character;
         foreach (var item in _allItems)
-            item.Found = foundKeys.Contains(item.ProgressKey);
+        {
+            item.Found = progress.FoundKeys.Contains(item.ProgressKey);
+            item.Equipped = _characterState.EquippedKeys.Contains(item.ProgressKey, StringComparer.OrdinalIgnoreCase);
+        }
+        _characterSheet = new CharacterSheetPanel(_characterState, _allItems);
         Text = "BG3 Item Explorer";
         try
         {
@@ -428,11 +436,18 @@ public sealed class MainForm : Form
 
     private void BuildRightPanel(Control host)
     {
+        _contentCharacterSplit.Dock = DockStyle.Fill;
+        _contentCharacterSplit.Orientation = Orientation.Vertical;
+        _contentCharacterSplit.SplitterWidth = 5;
+        _contentCharacterSplit.BackColor = Theme.Gold;
+        host.Controls.Add(_contentCharacterSplit);
+
         _rightSplit.Dock = DockStyle.Fill;
         _rightSplit.Orientation = Orientation.Horizontal;
         _rightSplit.SplitterWidth = 5;
         _rightSplit.BackColor = Theme.Gold;
-        host.Controls.Add(_rightSplit);
+        _contentCharacterSplit.Panel1.Controls.Add(_rightSplit);
+        _contentCharacterSplit.Panel2.Controls.Add(_characterSheet);
 
         BuildGrid(_rightSplit.Panel1);
         BuildDetails(_rightSplit.Panel2);
@@ -486,6 +501,16 @@ public sealed class MainForm : Form
             Frozen = true,
             ReadOnly = true,
             ToolTipText = "Gevonden / opgehaald"
+        });
+        _grid.Columns.Add(new DataGridViewCheckBoxColumn
+        {
+            HeaderText = "⚔",
+            Name = "Equipped",
+            Width = 48,
+            MinimumWidth = 48,
+            Frozen = true,
+            ReadOnly = true,
+            ToolTipText = "Equipped on character"
         });
         AddColumn("Act", nameof(ItemRecord.Act), 62, frozen: true);
         AddColumn("Name", nameof(ItemRecord.Name), 185, frozen: true);
@@ -666,6 +691,8 @@ public sealed class MainForm : Form
 
             _grid.Columns["Found"]!.HeaderText = Localization.T("GridFound");
             _grid.Columns["Found"]!.ToolTipText = Localization.T("FoundTooltip");
+            _grid.Columns["Equipped"]!.HeaderText = Localization.T("GridEquipped");
+            _grid.Columns["Equipped"]!.ToolTipText = Localization.T("EquippedTooltip");
             _grid.Columns[nameof(ItemRecord.Name)]!.HeaderText = Localization.T("GridName");
             _grid.Columns[nameof(ItemRecord.Rarity)]!.HeaderText = Localization.T("GridRarity");
             _grid.Columns[nameof(ItemRecord.Type)]!.HeaderText = Localization.T("GridType");
@@ -674,6 +701,7 @@ public sealed class MainForm : Form
             _grid.Columns[nameof(ItemRecord.Location)]!.HeaderText = Localization.T("GridLocation");
             _grid.Columns[nameof(ItemRecord.Description)]!.HeaderText = Localization.T("GridDescription");
             _grid.Columns[nameof(ItemRecord.NotesText)]!.HeaderText = Localization.T("GridNotes");
+            _characterSheet.SetLanguage();
         }
         finally
         {
@@ -712,6 +740,7 @@ public sealed class MainForm : Form
         _foundBox.SelectedIndexChanged += (_, _) => ApplyFilters();
         _sortBox.SelectedIndexChanged += (_, _) => ApplyFilters();
         _directionBox.SelectedIndexChanged += (_, _) => ApplyFilters();
+        _characterSheet.StateChanged += (_, _) => SaveProgressWithWarning();
         _grid.SelectionChanged += (_, _) => ShowSelectedItem();
         _grid.CellDoubleClick += (_, eventArgs) =>
         {
@@ -746,6 +775,11 @@ public sealed class MainForm : Form
         {
             _resizingSplit = true;
             _mainSplit.SplitterDistance = Math.Clamp((int)(_mainSplit.Width * 0.20), 250, 360);
+            if (_contentCharacterSplit.Width > 850)
+            {
+                var maximum = _contentCharacterSplit.Width - 220 - _contentCharacterSplit.SplitterWidth;
+                _contentCharacterSplit.SplitterDistance = Math.Clamp((int)(_contentCharacterSplit.Width * 0.75), 600, maximum);
+            }
             _rightSplit.SplitterDistance = Math.Clamp((int)(_rightSplit.Height * 0.65), 360, _rightSplit.Height - 200);
         }
         finally
@@ -844,6 +878,11 @@ public sealed class MainForm : Form
         if (_grid.Columns[eventArgs.ColumnIndex].Name == "Found")
         {
             eventArgs.Value = item.Found;
+            eventArgs.FormattingApplied = true;
+        }
+        if (_grid.Columns[eventArgs.ColumnIndex].Name == "Equipped")
+        {
+            eventArgs.Value = item.Equipped;
             eventArgs.FormattingApplied = true;
         }
     }
@@ -957,9 +996,12 @@ public sealed class MainForm : Form
 
     private void GridOnCellContentClick(object? sender, DataGridViewCellEventArgs eventArgs)
     {
-        if (eventArgs.RowIndex >= 0 && _grid.Columns[eventArgs.ColumnIndex].Name == "Found" &&
-            _grid.Rows[eventArgs.RowIndex].DataBoundItem is ItemRecord item)
+        if (eventArgs.RowIndex < 0 || _grid.Rows[eventArgs.RowIndex].DataBoundItem is not ItemRecord item)
+            return;
+        if (_grid.Columns[eventArgs.ColumnIndex].Name == "Found")
             ToggleFound(item);
+        else if (_grid.Columns[eventArgs.ColumnIndex].Name == "Equipped")
+            ToggleEquipped(item);
     }
 
     private void GridOnKeyDown(object? sender, KeyEventArgs eventArgs)
@@ -976,7 +1018,7 @@ public sealed class MainForm : Form
         item.Found = !item.Found;
         try
         {
-            _progressStore.Save(_allItems);
+            _progressStore.Save(_allItems, _characterState);
         }
         catch (Exception exception)
         {
@@ -989,6 +1031,35 @@ public sealed class MainForm : Form
             return;
         }
         ApplyFilters();
+    }
+
+    private void ToggleEquipped(ItemRecord item)
+    {
+        if (item.Equipped)
+            item.Equipped = false;
+        else
+            GearRules.Equip(_allItems, item);
+
+        _characterSheet.RefreshFromEquipment();
+        SaveProgressWithWarning();
+        _grid.Invalidate();
+        ShowSelectedItem();
+    }
+
+    private void SaveProgressWithWarning()
+    {
+        try
+        {
+            _progressStore.Save(_allItems, _characterState);
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(
+                Localization.Format("ProgressError", exception.Message),
+                Localization.T("WarningTitle"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
     }
 
     private static Image CreatePlaceholderImage(string name)
