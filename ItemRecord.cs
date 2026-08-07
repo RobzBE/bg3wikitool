@@ -21,6 +21,9 @@ public sealed class ItemRecord
     public bool Found { get; set; }
 
     [JsonIgnore]
+    public bool Equipped { get; set; }
+
+    [JsonIgnore]
     public string ProgressKey => $"{Act}|{SourceRow}|{Name}";
 
     [JsonIgnore]
@@ -33,6 +36,7 @@ public sealed class ItemRecord
     public string SearchText => string.Join('\u001f', new[]
     {
         Act, Name, Rarity, Type, Properties, ActArea, Location, Description, NotesText,
-        Found ? "gevonden opgehaald" : "nog zoeken"
+        Found ? "gevonden opgehaald" : "nog zoeken",
+        Equipped ? "equipped gedragen uitgerust" : ""
     });
 }

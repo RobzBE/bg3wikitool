@@ -4,13 +4,20 @@ A portable, offline Windows app for the Act 1, Act 2 and Act 3 items in the supp
 
 ## Features
 
-- 20/80 layout: search, filters and sorting on the left; item table and full details on the right.
+- 20/60/20 layout: search and filters on the left, item table/details in the centre, and a live character sheet on the right.
 - Search by name, properties, location, description and notes.
 - Filters for act, rarity, type, area/location, notes and collected status.
 - Sort by name, rarity, type, act, location or status.
 - Offline preview images for all 556 item records.
 - Clickable source links to BG3 Wiki.
 - Mark every item as found/collected.
+- Equip every item independently from its found status; mutually exclusive gear slots are handled automatically and two rings are allowed.
+- Persistent race, class, level, difficulty and level-1 ability scores.
+- Live offense and defense statistics including AC, Spell Save DC, HP, initiative, movement and all six saving throws.
+- Act 1/2/3 baseline enemy success chances for weapon attacks, spell attacks and DEX/CON/WIS spell effects.
+- Dynamic item-effect analysis for AC, ability changes, attack/save bonuses, advantage/disadvantage, critical-hit immunity, damage reduction and resistances.
+- Conditional effects can be toggled. For example, Cloak of Displacement automatically applies enemy Disadvantage at the start of a turn and can be disabled after the wearer takes damage.
+- Explorer, Balanced, Tactician and Honour calculations, including Explorer proficiency/HP changes and the Tactician/Honour +2 enemy attack/save-DC modifier.
 - Portable progress file: `BG3-Item-Explorer-progress.json` is saved beside the exe.
 - English and Dutch UI; English is selected on every launch.
 - Alegreya is embedded under the SIL Open Font License.
@@ -29,7 +36,7 @@ The published single-file executable contains the .NET runtime, item database, i
 
 ## Nederlands
 
-De taal kan linksboven op **Nederlands** worden gezet. Alle zoek-, filter-, sorteer-, voortgangs- en detailbedieningen worden dan vertaald. De iteminhoud zelf blijft in de oorspronkelijke Engelse brontekst.
+De taal kan linksboven op **Nederlands** worden gezet. Alle zoek-, filter-, sorteer-, voortgangs-, character-sheet- en detailbedieningen worden dan vertaald. De iteminhoud zelf blijft in de oorspronkelijke Engelse brontekst.
 
 ## Sources and licensing note
 
