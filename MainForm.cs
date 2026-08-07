@@ -31,7 +31,8 @@ public sealed class MainForm : Form
     private readonly RichTextBox _detailText = new();
     private readonly FlowLayoutPanel _linksPanel = new();
     private readonly PictureBox _itemPicture = new();
-    private readonly CharacterState _characterState;
+    private readonly List<CharacterState> _characters;
+    private int _activeCharacterIndex;
     private readonly CharacterSheetPanel _characterSheet;
     private bool _applyingLanguage;
 
@@ -39,13 +40,15 @@ public sealed class MainForm : Form
     {
         _allItems = items;
         var progress = _progressStore.LoadState();
-        _characterState = progress.Character;
+        _characters = progress.Characters;
+        _activeCharacterIndex = Math.Clamp(progress.ActiveCharacterIndex, 0, _characters.Count - 1);
+        var activeCharacter = _characters[_activeCharacterIndex];
         foreach (var item in _allItems)
         {
             item.Found = progress.FoundKeys.Contains(item.ProgressKey);
-            item.Equipped = _characterState.EquippedKeys.Contains(item.ProgressKey, StringComparer.OrdinalIgnoreCase);
+            item.Equipped = activeCharacter.EquippedKeys.Contains(item.ProgressKey, StringComparer.OrdinalIgnoreCase);
         }
-        _characterSheet = new CharacterSheetPanel(_characterState, _allItems);
+        _characterSheet = new CharacterSheetPanel(_characters, _activeCharacterIndex, _allItems);
         Text = "BG3 Item Explorer";
         try
         {
@@ -567,16 +570,18 @@ public sealed class MainForm : Form
             ReadOnly = true,
             ToolTipText = "Gevonden / opgehaald"
         });
-        _grid.Columns.Add(new DataGridViewCheckBoxColumn
+        for (var characterIndex = 0; characterIndex < 4; characterIndex++)
         {
-            HeaderText = "⚔",
-            Name = "Equipped",
-            Width = 48,
-            MinimumWidth = 48,
-            Frozen = true,
-            ReadOnly = true,
-            ToolTipText = "Equipped on character"
-        });
+            _grid.Columns.Add(new DataGridViewCheckBoxColumn
+            {
+                HeaderText = $"⚔{characterIndex + 1}",
+                Name = $"Equipped{characterIndex + 1}",
+                Width = 42,
+                MinimumWidth = 42,
+                Frozen = true,
+                ReadOnly = true
+            });
+        }
         AddColumn("Act", nameof(ItemRecord.Act), 62, frozen: true);
         AddColumn("Name", nameof(ItemRecord.Name), 185, frozen: true);
         AddColumn("Rarity", nameof(ItemRecord.Rarity), 85);
@@ -756,8 +761,7 @@ public sealed class MainForm : Form
 
             _grid.Columns["Found"]!.HeaderText = Localization.T("GridFound");
             _grid.Columns["Found"]!.ToolTipText = Localization.T("FoundTooltip");
-            _grid.Columns["Equipped"]!.HeaderText = Localization.T("GridEquipped");
-            _grid.Columns["Equipped"]!.ToolTipText = Localization.T("EquippedTooltip");
+            UpdateEquipmentColumnHeaders();
             _grid.Columns[nameof(ItemRecord.Name)]!.HeaderText = Localization.T("GridName");
             _grid.Columns[nameof(ItemRecord.Rarity)]!.HeaderText = Localization.T("GridRarity");
             _grid.Columns[nameof(ItemRecord.Type)]!.HeaderText = Localization.T("GridType");
@@ -774,6 +778,18 @@ public sealed class MainForm : Form
         }
 
         ApplyFilters();
+    }
+
+    private void UpdateEquipmentColumnHeaders()
+    {
+        for (var index = 0; index < 4; index++)
+        {
+            var column = _grid.Columns[$"Equipped{index + 1}"];
+            if (column is null)
+                continue;
+            column.HeaderText = $"⚔{index + 1}";
+            column.ToolTipText = Localization.Format("EquippedTemplateTooltip", index + 1, _characters[index].Name);
+        }
     }
 
     private static void UpdateLocalizedControls(Control root)
@@ -805,7 +821,18 @@ public sealed class MainForm : Form
         _foundBox.SelectedIndexChanged += (_, _) => ApplyFilters();
         _sortBox.SelectedIndexChanged += (_, _) => ApplyFilters();
         _directionBox.SelectedIndexChanged += (_, _) => ApplyFilters();
-        _characterSheet.StateChanged += (_, _) => SaveProgressWithWarning();
+        _characterSheet.StateChanged += (_, _) =>
+        {
+            UpdateEquipmentColumnHeaders();
+            SaveProgressWithWarning();
+        };
+        _characterSheet.ActiveTemplateChanged += index =>
+        {
+            _activeCharacterIndex = index;
+            UpdateEquipmentColumnHeaders();
+            _grid.Invalidate();
+            ShowSelectedItem();
+        };
         _grid.SelectionChanged += (_, _) =>
         {
             ShowSelectedItem();
@@ -939,9 +966,12 @@ public sealed class MainForm : Form
             eventArgs.Value = item.Found;
             eventArgs.FormattingApplied = true;
         }
-        if (_grid.Columns[eventArgs.ColumnIndex].Name == "Equipped")
+        var columnName = _grid.Columns[eventArgs.ColumnIndex].Name;
+        if (columnName.StartsWith("Equipped", StringComparison.Ordinal)
+            && int.TryParse(columnName["Equipped".Length..], out var characterNumber)
+            && characterNumber is >= 1 and <= 4)
         {
-            eventArgs.Value = item.Equipped;
+            eventArgs.Value = _characters[characterNumber - 1].EquippedKeys.Contains(item.ProgressKey, StringComparer.OrdinalIgnoreCase);
             eventArgs.FormattingApplied = true;
         }
 
@@ -1076,8 +1106,14 @@ public sealed class MainForm : Form
             return;
         if (_grid.Columns[eventArgs.ColumnIndex].Name == "Found")
             ToggleFound(item);
-        else if (_grid.Columns[eventArgs.ColumnIndex].Name == "Equipped")
-            ToggleEquipped(item);
+        else
+        {
+            var columnName = _grid.Columns[eventArgs.ColumnIndex].Name;
+            if (columnName.StartsWith("Equipped", StringComparison.Ordinal)
+                && int.TryParse(columnName["Equipped".Length..], out var characterNumber)
+                && characterNumber is >= 1 and <= 4)
+                ToggleEquipped(item, characterNumber - 1);
+        }
     }
 
     private void GridOnKeyDown(object? sender, KeyEventArgs eventArgs)
@@ -1094,7 +1130,7 @@ public sealed class MainForm : Form
         item.Found = !item.Found;
         try
         {
-            _progressStore.Save(_allItems, _characterState);
+            _progressStore.Save(_allItems, _characters, _activeCharacterIndex);
         }
         catch (Exception exception)
         {
@@ -1109,14 +1145,21 @@ public sealed class MainForm : Form
         ApplyFilters();
     }
 
-    private void ToggleEquipped(ItemRecord item)
+    private void ToggleEquipped(ItemRecord item, int characterIndex)
     {
-        if (item.Equipped)
-            item.Equipped = false;
+        var character = _characters[characterIndex];
+        character.EquippedKeys ??= [];
+        if (character.EquippedKeys.Contains(item.ProgressKey, StringComparer.OrdinalIgnoreCase))
+            character.EquippedKeys.RemoveAll(key => key.Equals(item.ProgressKey, StringComparison.OrdinalIgnoreCase));
         else
-            GearRules.Equip(_allItems, item);
+            GearRules.EquipForCharacter(_allItems, character, item);
 
-        _characterSheet.RefreshFromEquipment();
+        if (characterIndex == _activeCharacterIndex)
+        {
+            foreach (var candidate in _allItems)
+                candidate.Equipped = character.EquippedKeys.Contains(candidate.ProgressKey, StringComparer.OrdinalIgnoreCase);
+            _characterSheet.RefreshFromEquipment();
+        }
         SaveProgressWithWarning();
         _grid.Invalidate();
         ShowSelectedItem();
@@ -1126,7 +1169,7 @@ public sealed class MainForm : Form
     {
         try
         {
-            _progressStore.Save(_allItems, _characterState);
+            _progressStore.Save(_allItems, _characters, _activeCharacterIndex);
         }
         catch (Exception exception)
         {

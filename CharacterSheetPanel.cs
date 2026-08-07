@@ -2,8 +2,12 @@ namespace BG3ItemExplorer;
 
 internal sealed class CharacterSheetPanel : UserControl
 {
-    private readonly CharacterState _state;
+    private CharacterState _state;
+    private readonly IReadOnlyList<CharacterState> _templates;
+    private int _activeTemplateIndex;
     private readonly List<ItemRecord> _items;
+    private readonly ComboBox _template = new();
+    private readonly TextBox _characterName = new();
     private readonly ComboBox _race = new();
     private readonly ComboBox _class = new();
     private readonly ComboBox _difficulty = new();
@@ -13,6 +17,8 @@ internal sealed class CharacterSheetPanel : UserControl
     private readonly Dictionary<string, ComboBox> _fightingStyles = [];
     private readonly List<FeatSlotControls> _featSlots = [];
     private readonly Label _title = new();
+    private readonly Label _templateCaption = new();
+    private readonly Label _characterNameCaption = new();
     private readonly Label _identityCaption = new();
     private readonly Label _abilityCaption = new();
     private readonly Label _classLevelsCaption = new();
@@ -49,10 +55,13 @@ internal sealed class CharacterSheetPanel : UserControl
     private bool _updating;
 
     public event EventHandler? StateChanged;
+    public event Action<int>? ActiveTemplateChanged;
 
-    public CharacterSheetPanel(CharacterState state, List<ItemRecord> items)
+    public CharacterSheetPanel(IReadOnlyList<CharacterState> templates, int activeTemplateIndex, List<ItemRecord> items)
     {
-        _state = state;
+        _templates = templates;
+        _activeTemplateIndex = Math.Clamp(activeTemplateIndex, 0, templates.Count - 1);
+        _state = templates[_activeTemplateIndex];
         _items = items;
         Dock = DockStyle.Fill;
         BackColor = Color.FromArgb(248, 235, 207);
@@ -69,9 +78,14 @@ internal sealed class CharacterSheetPanel : UserControl
         RefreshCalculations();
     }
 
+    public CharacterState CurrentState => _state;
+    public int ActiveTemplateIndex => _activeTemplateIndex;
+
     public void SetLanguage()
     {
         _title.Text = Localization.T("CharacterSheet");
+        _templateCaption.Text = Localization.T("CharacterTemplate");
+        _characterNameCaption.Text = Localization.T("CharacterName");
         _identityCaption.Text = Localization.T("Identity");
         _abilityCaption.Text = Localization.T("BaseAbilities");
         _offenseCaption.Text = Localization.T("Offense");
@@ -91,6 +105,7 @@ internal sealed class CharacterSheetPanel : UserControl
         _difficultyCaption.Text = Localization.T("Difficulty");
         _difficultyInfo.Text = Localization.T("Difficulty" + (_difficulty.SelectedItem as string ?? _state.Difficulty));
         _benchmarkNote.Text = Localization.T("BenchmarkNote");
+        RefreshTemplateSelector();
         RefreshClassLevelControls();
         RefreshBuildOptionControls();
         RefreshCalculations();
@@ -105,6 +120,28 @@ internal sealed class CharacterSheetPanel : UserControl
         _buildTab.AutoScroll = true;
         _statsTab.BackColor = BackColor;
         _statsTab.AutoScroll = true;
+        var templateBar = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            Height = 58,
+            ColumnCount = 2,
+            RowCount = 2,
+            Padding = new Padding(10, 4, 10, 4),
+            BackColor = Theme.ParchmentAlt
+        };
+        templateBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
+        templateBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
+        ConfigureCaption(_templateCaption);
+        ConfigureCaption(_characterNameCaption);
+        ConfigureCombo(_template);
+        _characterName.Dock = DockStyle.Top;
+        _characterName.Font = Theme.Body(8.5f);
+        _characterName.BackColor = Theme.Parchment;
+        _characterName.MaxLength = 40;
+        templateBar.Controls.Add(_templateCaption, 0, 0);
+        templateBar.Controls.Add(_characterNameCaption, 1, 0);
+        templateBar.Controls.Add(_template, 0, 1);
+        templateBar.Controls.Add(_characterName, 1, 1);
         var content = new TableLayoutPanel
         {
             Dock = DockStyle.Top,
@@ -319,7 +356,42 @@ internal sealed class CharacterSheetPanel : UserControl
         _tabs.TabPages.Add(_statsTab);
         _tabs.TabPages.Add(_buildTab);
         Controls.Add(_tabs);
+        Controls.Add(templateBar);
         SetLanguage();
+    }
+
+    private void RefreshTemplateSelector()
+    {
+        var previousUpdating = _updating;
+        _updating = true;
+        _template.BeginUpdate();
+        while (_template.Items.Count < _templates.Count)
+            _template.Items.Add("");
+        while (_template.Items.Count > _templates.Count)
+            _template.Items.RemoveAt(_template.Items.Count - 1);
+        for (var index = 0; index < _templates.Count; index++)
+        {
+            var displayName = string.IsNullOrWhiteSpace(_templates[index].Name) ? $"Character {index + 1}" : _templates[index].Name;
+            _template.Items[index] = $"{index + 1} · {displayName}";
+        }
+        _template.SelectedIndex = _activeTemplateIndex;
+        _template.EndUpdate();
+        _updating = previousUpdating;
+    }
+
+    private void SwitchTemplate(int index)
+    {
+        if (_updating || index < 0 || index >= _templates.Count || index == _activeTemplateIndex)
+            return;
+        _state.EquippedKeys = _items.Where(item => item.Equipped).Select(item => item.ProgressKey).OrderBy(value => value).ToList();
+        _activeTemplateIndex = index;
+        _state = _templates[index];
+        foreach (var item in _items)
+            item.Equipped = _state.EquippedKeys.Contains(item.ProgressKey, StringComparer.OrdinalIgnoreCase);
+        LoadStateIntoControls();
+        RefreshCalculations();
+        ActiveTemplateChanged?.Invoke(index);
+        StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void LoadStateIntoControls()
@@ -333,12 +405,23 @@ internal sealed class CharacterSheetPanel : UserControl
         foreach (var ability in CharacterCalculator.AbilityNames)
             _abilities[ability].Value = Math.Clamp(_state.GetAbility(ability), 3, 20);
         _difficultyInfo.Text = Localization.T("Difficulty" + (_difficulty.SelectedItem as string ?? "Balanced"));
+        _characterName.Text = _state.Name;
+        RefreshTemplateSelector();
         RefreshBuildOptionControls();
         _updating = false;
     }
 
     private void WireEvents()
     {
+        _template.SelectedIndexChanged += (_, _) => SwitchTemplate(_template.SelectedIndex);
+        _characterName.TextChanged += (_, _) =>
+        {
+            if (_updating)
+                return;
+            _state.Name = string.IsNullOrWhiteSpace(_characterName.Text) ? $"Character {_activeTemplateIndex + 1}" : _characterName.Text.Trim();
+            RefreshTemplateSelector();
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        };
         _race.SelectedIndexChanged += (_, _) => UpdateStateFromControls();
         _class.SelectedIndexChanged += (_, _) => ChangeStartingClass();
         _difficulty.SelectedIndexChanged += (_, _) => UpdateStateFromControls();
@@ -613,7 +696,7 @@ internal sealed class CharacterSheetPanel : UserControl
         var panel = new Panel
         {
             Width = Math.Max(210, ClientSize.Width - 35),
-            Height = 82,
+            Height = 104,
             BackColor = Color.FromArgb(238, 220, 184),
             Margin = new Padding(0, 0, 0, 4),
             Padding = new Padding(7, 4, 7, 3)
@@ -622,7 +705,7 @@ internal sealed class CharacterSheetPanel : UserControl
         {
             Dock = DockStyle.Top,
             Height = 20,
-            Text = $"{threat.Act}  —  {Localization.T("WorstCase")}",
+            Text = $"{threat.Act}  —  {Localization.T(threat.Benchmark)}",
             Font = Theme.Body(8.5f, FontStyle.Bold),
             ForeColor = Theme.Crimson
         };

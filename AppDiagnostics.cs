@@ -22,6 +22,7 @@ internal static class AppDiagnostics
         Directory.CreateDirectory(progressDirectory);
         var progressRoundTrip = false;
         var characterRoundTrip = false;
+        var templatesRoundTrip = false;
         try
         {
             var store = new ProgressStore(progressDirectory);
@@ -51,7 +52,16 @@ internal static class AppDiagnostics
                                  && loadedState.Character.FightingStyles.GetValueOrDefault("Fighter") == "Defence"
                                  && loadedState.Character.Feats.Any(feat => feat.Name == "Ability Improvement" && feat.Choice == "INT +2")
                                  && loadedState.Character.HasBuff("Mage Armour");
+            var templates = Enumerable.Range(1, 4).Select(index => new CharacterState { Name = $"Test Hero {index}" }).ToList();
+            items[1].Equipped = true;
+            store.Save(items, templates, 2);
+            var loadedTemplates = store.LoadState();
+            templatesRoundTrip = loadedTemplates.Characters.Count == 4
+                                 && loadedTemplates.ActiveCharacterIndex == 2
+                                 && loadedTemplates.Characters.Select(character => character.Name).SequenceEqual(["Test Hero 1", "Test Hero 2", "Test Hero 3", "Test Hero 4"])
+                                 && loadedTemplates.Characters[2].EquippedKeys.Contains(items[1].ProgressKey);
             items[0].Found = false;
+            items[1].Equipped = false;
         }
         finally
         {
@@ -74,10 +84,16 @@ internal static class AppDiagnostics
                                     && explorerStats.HitPoints == baselineStats.HitPoints * 2;
         var worstCaseThreatsApplied = baselineStats.Threats[0].AttackEnemy == "Grym"
                                       && baselineStats.Threats[0].AttackBonus == 11
-                                      && baselineStats.Threats[1].AttackEnemy == "Apostle of Myrkul"
-                                      && baselineStats.Threats[2].AttackEnemy == "Dominated Red Dragon"
-                                      && baselineStats.Threats[2].SpellEnemy == "Netherbrain"
-                                      && baselineStats.Threats[2].SpellDc == 23;
+                                      && baselineStats.Threats[2].AttackEnemy == "Apostle of Myrkul"
+                                      && baselineStats.Threats[4].AttackEnemy == "Dominated Red Dragon"
+                                      && baselineStats.Threats[4].SpellEnemy == "Netherbrain"
+                                      && baselineStats.Threats[4].SpellDc == 23;
+        var averageThreatsApplied = baselineStats.Threats.Count == 6
+                                    && baselineStats.Threats[1].Benchmark == "Average"
+                                    && baselineStats.Threats[1].AttackBonus == 5
+                                    && baselineStats.Threats[3].AttackBonus == 7
+                                    && baselineStats.Threats[5].AttackBonus == 10
+                                    && tacticianStats.Threats[1].AttackBonus == baselineStats.Threats[1].AttackBonus + 2;
         var naturalRollBoundsApplied = CharacterCalculator.AttackHitChance(100, 0) == 5
                                        && CharacterCalculator.AttackHitChance(100, 0, criticalHitImmune: true) == 0
                                        && CharacterCalculator.AttackHitChance(-100, 0) == 95
@@ -187,10 +203,20 @@ internal static class AppDiagnostics
                                      && sanctuaryStats.Threats.All(threat => threat.AttackHitChance == 0 && threat.SpellAttackHitChance == 0)
                                      && resistanceStats.AttackBonusDie == 0
                                      && resistanceStats.SavingThrowBonusDie == 4;
+        var testShields = items.Where(item => item.Type.Equals("Shield", StringComparison.OrdinalIgnoreCase)).Take(2).ToList();
+        var gearCharacterOne = new CharacterState { Name = "Gear One" };
+        var gearCharacterTwo = new CharacterState { Name = "Gear Two" };
+        GearRules.EquipForCharacter(items, gearCharacterOne, testShields[0]);
+        GearRules.EquipForCharacter(items, gearCharacterOne, testShields[1]);
+        GearRules.EquipForCharacter(items, gearCharacterTwo, testShields[0]);
+        var templateGearSetsApplied = gearCharacterOne.EquippedKeys.Count == 1
+                                      && gearCharacterOne.EquippedKeys.Contains(testShields[1].ProgressKey)
+                                      && gearCharacterTwo.EquippedKeys.Count == 1
+                                      && gearCharacterTwo.EquippedKeys.Contains(testShields[0].ProgressKey);
 
         var report = new
         {
-            Passed = items.Count == 556 && uniqueProgressKeys == items.Count && loadedImages == items.Count && progressRoundTrip && characterRoundTrip && displacementMathApplied && difficultyMathApplied && worstCaseThreatsApplied && naturalRollBoundsApplied && multiclassMathApplied && featAndBuffMathApplied && FontManager.IsAlegreyaLoaded,
+            Passed = items.Count == 556 && uniqueProgressKeys == items.Count && loadedImages == items.Count && progressRoundTrip && characterRoundTrip && templatesRoundTrip && templateGearSetsApplied && displacementMathApplied && difficultyMathApplied && worstCaseThreatsApplied && averageThreatsApplied && naturalRollBoundsApplied && multiclassMathApplied && featAndBuffMathApplied && FontManager.IsAlegreyaLoaded,
             ItemCount = items.Count,
             ActCounts = items.GroupBy(item => item.Act).ToDictionary(group => group.Key, group => group.Count()),
             UniqueProgressKeys = uniqueProgressKeys,
@@ -199,11 +225,14 @@ internal static class AppDiagnostics
             ItemsWithNotes = items.Count(item => item.Notes.Count > 0),
             ProgressRoundTrip = progressRoundTrip,
             CharacterRoundTrip = characterRoundTrip,
+            TemplatesRoundTrip = templatesRoundTrip,
+            TemplateGearSetsApplied = templateGearSetsApplied,
             DisplacementMathApplied = displacementMathApplied,
             BaselineAct1AttackChance = baselineStats.Threats[0].AttackHitChance,
             CloakAct1AttackChance = displacedStats.Threats[0].AttackHitChance,
             DifficultyMathApplied = difficultyMathApplied,
             WorstCaseThreatsApplied = worstCaseThreatsApplied,
+            AverageThreatsApplied = averageThreatsApplied,
             NaturalRollBoundsApplied = naturalRollBoundsApplied,
             MulticlassMathApplied = multiclassMathApplied,
             FeatAndBuffMathApplied = featAndBuffMathApplied,

@@ -23,6 +23,7 @@ internal sealed record EnemyThreatProfile(
 
 internal sealed record ActThreat(
     string Act,
+    string Benchmark,
     string AttackEnemy,
     int AttackBonus,
     string SpellEnemy,
@@ -123,6 +124,24 @@ internal static partial class CharacterCalculator
         ]
     };
 
+    // Representative act baselines: expected hostile proficiency plus a typical
+    // primary attack/casting modifier for the act's level range. Difficulty
+    // applies the same +2 attack/DC adjustment used by the worst-case cards.
+    private static readonly Dictionary<string, EnemyThreatProfile[]> AverageThreats = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Balanced"] = CreateAverageThreats(0),
+        ["Explorer"] = CreateAverageThreats(2),
+        ["Tactician"] = CreateAverageThreats(2),
+        ["Honour"] = CreateAverageThreats(2)
+    };
+
+    private static EnemyThreatProfile[] CreateAverageThreats(int difficultyBonus) =>
+    [
+        new("ACT 1", "Average enemy", 5 + difficultyBonus, "Mixed", "Average caster", 13 + difficultyBonus, "Mixed"),
+        new("ACT 2", "Average enemy", 7 + difficultyBonus, "Mixed", "Average caster", 15 + difficultyBonus, "Mixed"),
+        new("ACT 3", "Average enemy", 10 + difficultyBonus, "Mixed", "Average caster", 18 + difficultyBonus, "Mixed")
+    ];
+
     public static CharacterStats Calculate(CharacterState state, IEnumerable<ItemRecord> allItems)
     {
         state.NormalizeClassLevels(!state.Difficulty.Equals("Explorer", StringComparison.OrdinalIgnoreCase));
@@ -218,17 +237,21 @@ internal static partial class CharacterCalculator
         var generalSaveDisadvantage = nonProficientGear.Count > 0 || activeEffects.Any(effect => effect.Kind == ItemEffectKind.SavingThrowDisadvantage);
         var criticalHitImmune = activeEffects.Any(effect => effect.Kind == ItemEffectKind.CriticalHitImmunity);
         var threatProfiles = WorstCaseThreats.GetValueOrDefault(state.Difficulty, WorstCaseThreats["Balanced"]);
+        var averageProfiles = AverageThreats.GetValueOrDefault(state.Difficulty, AverageThreats["Balanced"]);
         var savingThrowDie = state.HasBuff("Bless") || state.HasBuff("Resistance") ? 4 : 0;
         var sanctuary = state.HasBuff("Sanctuary");
         var threats = threatProfiles
-            .Select(profile =>
+            .SelectMany((profile, index) => new[] { (Benchmark: "WorstCase", Profile: profile), (Benchmark: "Average", Profile: averageProfiles[index]) })
+            .Select(entry =>
             {
+                var profile = entry.Profile;
                 var spellAttackBonus = profile.SpellDc - 8;
                 var protectedAttack = state.HasBuff("Protection from Evil and Good") && IsProtectedCreatureType(profile.AttackCreatureType);
                 var protectedSpellAttack = state.HasBuff("Protection from Evil and Good") && IsProtectedCreatureType(profile.SpellCreatureType);
                 var spellEffect = CalculateWorstSpellEffectChance(state, profile.SpellDc, saves, activeEffects, spellSaveAdvantage, generalSaveDisadvantage, savingThrowDie);
                 return new ActThreat(
                     profile.Act,
+                    entry.Benchmark,
                     profile.AttackEnemy,
                     profile.AttackBonus,
                     profile.SpellEnemy,

@@ -2,6 +2,7 @@ namespace BG3ItemExplorer;
 
 internal sealed class CharacterState
 {
+    public string Name { get; set; } = "Character";
     public string Race { get; set; } = "Human";
     public string ClassName { get; set; } = "Fighter";
     public string Difficulty { get; set; } = "Balanced";
@@ -180,5 +181,27 @@ internal static class GearRules
                 candidate.Equipped = false;
         }
         item.Equipped = true;
+    }
+
+    public static void EquipForCharacter(List<ItemRecord> allItems, CharacterState character, ItemRecord item)
+    {
+        character.EquippedKeys ??= [];
+        var equippedKeys = character.EquippedKeys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var slot = SlotFor(item);
+        var equippedInSlot = allItems
+            .Where(candidate => candidate != item && equippedKeys.Contains(candidate.ProgressKey) && SlotFor(candidate) == slot)
+            .ToList();
+        if (slot == "Ring")
+        {
+            if (equippedInSlot.Count >= 2)
+                equippedKeys.Remove(equippedInSlot[0].ProgressKey);
+        }
+        else
+        {
+            foreach (var candidate in equippedInSlot)
+                equippedKeys.Remove(candidate.ProgressKey);
+        }
+        equippedKeys.Add(item.ProgressKey);
+        character.EquippedKeys = equippedKeys.OrderBy(key => key).ToList();
     }
 }
