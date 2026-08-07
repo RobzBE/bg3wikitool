@@ -7,6 +7,7 @@ internal sealed class CharacterState
     public string Race { get; set; } = "Human";
     public string ClassName { get; set; } = "Fighter";
     public string SubclassName { get; set; } = "";
+    public Dictionary<string, string> Subclasses { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public string Difficulty { get; set; } = "Balanced";
     public int Level { get; set; } = 1;
     public Dictionary<string, int> ClassLevels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -37,6 +38,24 @@ internal sealed class CharacterState
         ClassLevels is not null && ClassLevels.TryGetValue(className, out var level) ? level : 0;
 
     public bool HasClass(string className) => GetClassLevel(className) > 0;
+
+    public string GetSubclass(string className)
+    {
+        if (Subclasses is not null && Subclasses.TryGetValue(className, out var subclass))
+            return subclass;
+        return className.Equals(ClassName, StringComparison.OrdinalIgnoreCase) ? SubclassName : "";
+    }
+
+    public void SetSubclass(string className, string? subclass)
+    {
+        Subclasses ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(subclass))
+            Subclasses.Remove(className);
+        else
+            Subclasses[className] = subclass.Trim();
+        if (className.Equals(ClassName, StringComparison.OrdinalIgnoreCase))
+            SubclassName = string.IsNullOrWhiteSpace(subclass) ? "" : subclass.Trim();
+    }
 
     public void NormalizeClassLevels(bool allowMulticlass)
     {
@@ -92,16 +111,27 @@ internal sealed class CharacterState
             .Where(pair => pair.Value > 0)
             .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
         Level = ClassLevels.Values.Sum();
-        var subclasses = BuildOptions.SubclassesByClass.GetValueOrDefault(ClassName, []);
-        if (string.IsNullOrWhiteSpace(SubclassName)
+        Subclasses ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(SubclassName) && !Subclasses.ContainsKey(ClassName))
+            Subclasses[ClassName] = SubclassName;
+        if (string.IsNullOrWhiteSpace(GetSubclass("Fighter"))
             && ClassName.Equals("Fighter", StringComparison.OrdinalIgnoreCase)
             && GetClassLevel("Fighter") >= 3
             && ActiveBuffs?.Contains("Champion: Improved Critical Hit", StringComparer.OrdinalIgnoreCase) == true)
-            SubclassName = "Champion";
-        if (GetClassLevel(ClassName) < BuildOptions.SubclassLevel(ClassName))
-            SubclassName = "";
-        else if (!subclasses.Contains(SubclassName, StringComparer.OrdinalIgnoreCase))
-            SubclassName = subclasses.FirstOrDefault() ?? "";
+            Subclasses["Fighter"] = "Champion";
+        var normalizedSubclasses = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var className in ClassLevels.Keys)
+        {
+            if (GetClassLevel(className) < BuildOptions.SubclassLevel(className))
+                continue;
+            var choices = BuildOptions.SubclassesByClass.GetValueOrDefault(className, []);
+            var selected = choices.FirstOrDefault(choice => choice.Equals(GetSubclass(className), StringComparison.OrdinalIgnoreCase))
+                           ?? choices.FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(selected))
+                normalizedSubclasses[className] = selected;
+        }
+        Subclasses = normalizedSubclasses;
+        SubclassName = GetSubclass(ClassName);
         FightingStyles ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         Feats ??= [];
         EquippedKeys ??= [];

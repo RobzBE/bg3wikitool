@@ -220,7 +220,7 @@ internal static partial class CharacterCalculator
         var criticalLines = new List<string> { Localization.T("CriticalBase") };
         criticalLines.AddRange(criticalEffects.Select(effect => $"- {Math.Max(1, effect.Value)}  {effect.ItemName}"));
         if (state.HasBuff("Champion: Improved Critical Hit") && state.GetClassLevel("Fighter") >= 3
-            && state.SubclassName.Equals("Champion", StringComparison.OrdinalIgnoreCase))
+            && state.GetSubclass("Fighter").Equals("Champion", StringComparison.OrdinalIgnoreCase))
         {
             criticalReduction++;
             criticalLines.Add("- 1  Champion: Improved Critical Hit");
@@ -663,7 +663,7 @@ internal static partial class CharacterCalculator
         if (state.HasBuff("Indomitable") && state.GetClassLevel("Fighter") < 9)
             warnings.Add("Indomitable inactive: Fighter level 9 required.");
         if (state.HasBuff("Champion: Improved Critical Hit")
-            && (state.GetClassLevel("Fighter") < 3 || !state.SubclassName.Equals("Champion", StringComparison.OrdinalIgnoreCase)))
+            && (state.GetClassLevel("Fighter") < 3 || !state.GetSubclass("Fighter").Equals("Champion", StringComparison.OrdinalIgnoreCase)))
             warnings.Add("Champion: Improved Critical Hit inactive: Fighter level 3 and Champion subclass required.");
         if (state.HasBuff("Loviatar's Love active (30% HP or less)") && !state.HasPermanentBonus("Loviatar's Love"))
             warnings.Add("Loviatar's Love condition inactive: permanent bonus not selected.");

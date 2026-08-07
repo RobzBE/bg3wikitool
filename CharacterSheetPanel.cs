@@ -18,6 +18,7 @@ internal sealed class CharacterSheetPanel : UserControl
     private readonly NumericUpDown _level = new();
     private readonly Dictionary<string, NumericUpDown> _abilities = [];
     private readonly Dictionary<string, NumericUpDown> _classLevels = [];
+    private readonly Dictionary<string, ComboBox> _multiclassSubclasses = [];
     private readonly Dictionary<string, ComboBox> _fightingStyles = [];
     private readonly List<FeatSlotControls> _featSlots = [];
     private readonly Label _title = new();
@@ -280,9 +281,13 @@ internal sealed class CharacterSheetPanel : UserControl
                 Margin = new Padding(2)
             };
             _classLevels[className] = box;
+            var subclass = new ComboBox { Tag = className, Margin = new Padding(2), Visible = false };
+            ConfigureCombo(subclass);
+            _multiclassSubclasses[className] = subclass;
             var cell = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Margin = new Padding(1) };
             cell.Controls.Add(Caption(className));
             cell.Controls.Add(box);
+            cell.Controls.Add(subclass);
             classLevels.Controls.Add(cell, index % 2, index / 2);
         }
         content.Controls.Add(classLevels);
@@ -297,7 +302,7 @@ internal sealed class CharacterSheetPanel : UserControl
         for (var index = 0; index < CharacterCalculator.AbilityNames.Length; index++)
         {
             var ability = CharacterCalculator.AbilityNames[index];
-            var box = new NumericUpDown
+            var box = new WheelSafeNumericUpDown
             {
                 Minimum = 3,
                 Maximum = 20,
@@ -540,6 +545,8 @@ internal sealed class CharacterSheetPanel : UserControl
         _race.SelectedIndexChanged += (_, _) => UpdateStateFromControls();
         _class.SelectedIndexChanged += (_, _) => ChangeStartingClass();
         _subclass.SelectedIndexChanged += (_, _) => UpdateStateFromControls();
+        foreach (var combo in _multiclassSubclasses.Values)
+            combo.SelectedIndexChanged += (_, _) => UpdateStateFromControls();
         _difficulty.SelectedIndexChanged += (_, _) => UpdateStateFromControls();
         foreach (var box in _classLevels.Values)
             box.ValueChanged += (_, _) => UpdateStateFromControls();
@@ -595,11 +602,13 @@ internal sealed class CharacterSheetPanel : UserControl
             return;
         _state.Race = _race.SelectedItem as string ?? "Human";
         _state.ClassName = _class.SelectedItem as string ?? "Fighter";
-        _state.SubclassName = _subclass.SelectedItem as string ?? "";
         _state.Difficulty = _difficulty.SelectedItem as string ?? "Balanced";
         _difficultyInfo.Text = Localization.T("Difficulty" + _state.Difficulty);
         foreach (var pair in _classLevels)
             _state.ClassLevels[pair.Key] = (int)pair.Value.Value;
+        _state.SetSubclass(_state.ClassName, _subclass.Enabled ? _subclass.SelectedItem as string : "");
+        foreach (var pair in _multiclassSubclasses.Where(pair => !pair.Key.Equals(_state.ClassName, StringComparison.OrdinalIgnoreCase)))
+            _state.SetSubclass(pair.Key, pair.Value.Enabled ? pair.Value.SelectedItem as string : "");
         _state.NormalizeClassLevels(!_state.Difficulty.Equals("Explorer", StringComparison.OrdinalIgnoreCase));
         RefreshClassLevelControls();
         var featSlotCount = BuildOptions.FeatSlotCount(_state);
@@ -645,8 +654,9 @@ internal sealed class CharacterSheetPanel : UserControl
                 _state.ClassLevels[previousClass] = previousLevel - 1;
             _state.ClassLevels[newClass] = 1;
         }
+        var newSubclass = _state.Subclasses.GetValueOrDefault(newClass, "");
         _state.ClassName = newClass;
-        _state.SubclassName = "";
+        _state.SubclassName = newSubclass;
         _state.NormalizeClassLevels(!_state.Difficulty.Equals("Explorer", StringComparison.OrdinalIgnoreCase));
         RefreshClassLevelControls();
         UpdateStateFromControls();
@@ -683,12 +693,35 @@ internal sealed class CharacterSheetPanel : UserControl
             _subclass.Items.Add(Localization.Format("SubclassAtLevel", requiredLevel));
         else
             _subclass.Items.AddRange(subclasses);
-        var selected = classLevel >= requiredLevel && subclasses.Contains(_state.SubclassName, StringComparer.OrdinalIgnoreCase)
-            ? _state.SubclassName
+        var selectedSubclass = _state.GetSubclass(className);
+        var selected = classLevel >= requiredLevel && subclasses.Contains(selectedSubclass, StringComparer.OrdinalIgnoreCase)
+            ? selectedSubclass
             : _subclass.Items[0] as string;
         _subclass.SelectedItem = selected;
         _subclass.Enabled = classLevel >= requiredLevel;
         _subclass.EndUpdate();
+        foreach (var pair in _multiclassSubclasses)
+        {
+            var secondaryClass = pair.Key;
+            var combo = pair.Value;
+            var secondaryLevel = _state.GetClassLevel(secondaryClass);
+            var secondaryRequiredLevel = BuildOptions.SubclassLevel(secondaryClass);
+            var secondaryChoices = BuildOptions.SubclassesByClass.GetValueOrDefault(secondaryClass, []);
+            combo.BeginUpdate();
+            combo.Items.Clear();
+            if (secondaryLevel < secondaryRequiredLevel)
+                combo.Items.Add(Localization.Format("SubclassAtLevel", secondaryRequiredLevel));
+            else
+                combo.Items.AddRange(secondaryChoices);
+            var secondarySelected = _state.GetSubclass(secondaryClass);
+            combo.SelectedItem = secondaryLevel >= secondaryRequiredLevel
+                                 && secondaryChoices.Contains(secondarySelected, StringComparer.OrdinalIgnoreCase)
+                ? secondarySelected
+                : combo.Items[0] as string;
+            combo.Visible = secondaryLevel > 0 && !secondaryClass.Equals(className, StringComparison.OrdinalIgnoreCase);
+            combo.Enabled = combo.Visible && secondaryLevel >= secondaryRequiredLevel;
+            combo.EndUpdate();
+        }
         _updating = previousUpdating;
     }
 

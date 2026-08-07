@@ -14,6 +14,7 @@ public sealed class ItemRecord
     public string Location { get; init; } = "";
     public string Description { get; init; } = "";
     public string ImageKey { get; init; } = "";
+    public string[] GameIds { get; init; } = [];
     public Dictionary<string, string> Links { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, string> Notes { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 

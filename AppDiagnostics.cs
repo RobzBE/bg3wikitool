@@ -12,7 +12,9 @@ internal static class AppDiagnostics
             imported.SavePath,
             imported.SaveName,
             imported.WriteUtc,
+            imported.MatchedPresentItems,
             imported.MatchedItems,
+            PresentKeys = imported.PresentKeys.OrderBy(value => value),
             imported.Warnings,
             Characters = imported.Characters.Select(character => new
             {
@@ -23,6 +25,7 @@ internal static class AppDiagnostics
                 character.Level,
                 character.IsMulticlass,
                 character.ClassLevels,
+                character.Subclasses,
                 character.Abilities,
                 character.EquippedKeys
             })
@@ -64,6 +67,7 @@ internal static class AppDiagnostics
                 Level = 7,
                 Intelligence = 18,
                 ClassLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Fighter"] = 2, ["Wizard"] = 5 },
+                Subclasses = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Wizard"] = "Evocation School" },
                 FightingStyles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Fighter"] = "Defence" },
                 Feats = [new FeatSelection { Name = "Ability Improvement", Choice = "INT +2" }],
                 ActiveBuffs = ["Mage Armour"],
@@ -79,6 +83,7 @@ internal static class AppDiagnostics
                                  && loadedState.Character.Intelligence == 18
                                  && loadedState.Character.GetClassLevel("Fighter") == 2
                                  && loadedState.Character.GetClassLevel("Wizard") == 5
+                                 && loadedState.Character.GetSubclass("Wizard") == "Evocation School"
                                  && loadedState.Character.FightingStyles.GetValueOrDefault("Fighter") == "Defence"
                                  && loadedState.Character.Feats.Any(feat => feat.Name == "Ability Improvement" && feat.Choice == "INT +2")
                                  && loadedState.Character.HasBuff("Mage Armour")
@@ -240,15 +245,21 @@ internal static class AppDiagnostics
                                     && !fighterWizardStats.NonProficientGear.Contains(heavyArmour.Name);
         var subclassState = new CharacterState
         {
-            ClassName = "Fighter",
-            SubclassName = "Champion",
-            Level = 3,
-            ClassLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Fighter"] = 3 },
+            ClassName = "Wizard",
+            SubclassName = "Evocation School",
+            Level = 5,
+            ClassLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Wizard"] = 2, ["Fighter"] = 3 },
+            Subclasses = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Wizard"] = "Evocation School",
+                ["Fighter"] = "Champion"
+            },
             ActiveBuffs = ["Champion: Improved Critical Hit"]
         };
         var subclassStats = CharacterCalculator.Calculate(subclassState, items);
         var subclassOptionsApplied = BuildOptions.SubclassesByClass.Count == 12
                                      && BuildOptions.SubclassesByClass["Fighter"].Contains("Champion")
+                                     && subclassState.GetSubclass("Wizard") == "Evocation School"
                                      && BuildOptions.AvailableClassOptions(subclassState).Any(option => option.BuffName == "Champion: Improved Critical Hit")
                                      && subclassStats.CriticalThreshold == 19;
 

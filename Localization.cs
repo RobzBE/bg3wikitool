@@ -29,7 +29,7 @@ internal static class Localization
         ["NoLinkedSave"] = ("No savegame is linked. Use Link newest or Browse first.", "Er is geen savegame gekoppeld. Gebruik eerst Link nieuwste of Bladeren."),
         ["DefaultSaveMissing"] = ("No supported manual save or quicksave was found in the default folder:\n\n{0}\n\nBrowse for an .lsv file instead?", "Er is geen ondersteunde manual save of quicksave gevonden in de standaardmap:\n\n{0}\n\nWil je zelf een .lsv-bestand kiezen?"),
         ["BrowseSaveTitle"] = ("Select a Baldur's Gate 3 .lsv save", "Kies een Baldur's Gate 3 .lsv-save"),
-        ["SaveImportDetails"] = ("Imported metadata for {0} character(s); matched {1} equipped item(s). The save link is local and is never included in the share ID.", "Metadata voor {0} personage(s) geimporteerd; {1} gedragen item(s) gekoppeld. De savekoppeling blijft lokaal en komt nooit in de deel-ID."),
+        ["SaveImportDetails"] = ("Imported metadata for {0} character(s) and checked {1} saved item(s) as found. The save link is local and is never included in the share ID.", "Metadata voor {0} personage(s) geimporteerd en {1} item(s) uit de save als gevonden aangevinkt. De savekoppeling blijft lokaal en komt nooit in de deel-ID."),
         ["SaveImportError"] = ("The save could not be synchronized yet. Your current templates were left intact.\n\n{0}", "De save kon nog niet worden gesynchroniseerd. Je huidige templates zijn ongewijzigd gebleven.\n\n{0}"),
         ["Subtitle"] = ("Acts 1, 2 & 3 • offline • complete item information • data & images: bg3.wiki", "Act 1, 2 & 3 • offline • volledige iteminformatie • data & afbeeldingen: bg3.wiki"),
         ["FiltersTitle"] = ("SEARCH & FILTER", "ZOEKEN & FILTEREN"),

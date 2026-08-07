@@ -21,6 +21,7 @@ internal sealed class SaveCharacterSnapshot
     public int? Level { get; set; }
     public bool IsMulticlass { get; set; }
     public Dictionary<string, int> ClassLevels { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, string> Subclasses { get; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, int> Abilities { get; } = new(StringComparer.OrdinalIgnoreCase);
     public List<string> EquippedKeys { get; } = [];
 }
@@ -32,7 +33,19 @@ internal sealed class SaveImportResult
     public DateTime WriteUtc { get; init; }
     public List<SaveCharacterSnapshot> Characters { get; } = [];
     public List<string> Warnings { get; } = [];
+    public HashSet<string> PresentKeys { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public int MatchedPresentItems { get; set; }
     public int MatchedItems { get; set; }
+}
+
+internal sealed record SavedItemReference(string StatsId, ulong Flags, string Level, int TemplateType)
+{
+    private const ulong GlobalFlag = 0x04000000;
+
+    public bool IsPresent =>
+        TemplateType == 0
+        && string.IsNullOrWhiteSpace(Level)
+        && (Flags & GlobalFlag) != 0;
 }
 
 internal static class SaveGameService
@@ -108,7 +121,8 @@ internal static class SaveGameService
             {
                 using var stream = metadata.CreateContentReader();
                 using var reader = new StreamReader(stream, Encoding.UTF8, true);
-                ParseSaveInfo(await reader.ReadToEndAsync(cancellationToken), result);
+                var saveInfoJson = await reader.ReadToEndAsync(cancellationToken);
+                ParseSaveInfo(saveInfoJson, result);
             }
             else
             {
@@ -186,11 +200,13 @@ internal static class SaveGameService
         {
             target.ClassLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { [target.ClassName] = source.Level.Value };
         }
-        if (!string.IsNullOrWhiteSpace(source.Subclass))
+        foreach (var pair in source.Subclasses)
         {
-            target.SubclassName = source.Subclass;
+            target.SetSubclass(pair.Key, pair.Value);
             changed = true;
         }
+        if (source.Subclasses.Count == 0 && !string.IsNullOrWhiteSpace(source.Subclass))
+            target.SetSubclass(target.ClassName, source.Subclass);
         foreach (var pair in source.Abilities.Where(pair => pair.Value is >= 3 and <= 30))
         {
             target.SetAbility(pair.Key, pair.Value);
@@ -277,9 +293,11 @@ internal static class SaveGameService
             {
                 var name = CanonicalMatch(FindFirstString(classEntry, "Main", "Name", "Class", "ClassName"), CharacterCalculator.Classes);
                 var level = FindFirstInteger(classEntry, "Level", "ClassLevel");
-                var subclass = FindFirstString(classEntry, "Sub", "Subclass", "SubclassName") ?? "";
+                var subclass = CanonicalSubclass(name, FindFirstString(classEntry, "Sub", "Subclass", "SubclassName"));
                 if (!string.IsNullOrWhiteSpace(name))
                     parsedClasses.Add((name, subclass, level));
+                if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(subclass))
+                    snapshot.Subclasses[name] = subclass;
                 if (!string.IsNullOrWhiteSpace(name) && level is >= 1 and <= 12)
                     snapshot.ClassLevels[name] = level.Value;
                 if (string.IsNullOrWhiteSpace(snapshot.Subclass))
@@ -295,9 +313,32 @@ internal static class SaveGameService
             {
                 snapshot.StartingClass = parsedClasses[0].Main;
                 snapshot.Subclass = parsedClasses.Select(value => value.Sub).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? snapshot.Subclass;
-                if (!snapshot.IsMulticlass && snapshot.Level is >= 1 and <= 12)
-                    snapshot.ClassLevels[snapshot.StartingClass] = snapshot.Level.Value;
+                if (snapshot.Level is >= 1 and <= 12)
+                {
+                    var distinctClasses = parsedClasses
+                        .GroupBy(value => value.Main, StringComparer.OrdinalIgnoreCase)
+                        .Select(group => group.First())
+                        .ToList();
+                    var minimumLevels = distinctClasses.ToDictionary(
+                        value => value.Main,
+                        value => string.IsNullOrWhiteSpace(value.Sub) ? 1 : BuildOptions.SubclassLevel(value.Main),
+                        StringComparer.OrdinalIgnoreCase);
+                    var assigned = minimumLevels.Values.Sum();
+                    if (assigned <= snapshot.Level.Value)
+                    {
+                        minimumLevels[snapshot.StartingClass] += snapshot.Level.Value - assigned;
+                        foreach (var pair in minimumLevels)
+                            snapshot.ClassLevels[pair.Key] = pair.Value;
+                    }
+                }
             }
+        }
+        if (!string.IsNullOrWhiteSpace(snapshot.StartingClass))
+        {
+            snapshot.Subclass = snapshot.Subclasses.GetValueOrDefault(snapshot.StartingClass,
+                CanonicalSubclass(snapshot.StartingClass, snapshot.Subclass));
+            if (!string.IsNullOrWhiteSpace(snapshot.Subclass))
+                snapshot.Subclasses[snapshot.StartingClass] = snapshot.Subclass;
         }
         return snapshot;
     }
@@ -333,6 +374,9 @@ internal static class SaveGameService
         primary.Race = FirstCanonical(strings, CharacterCalculator.Races, "Race", "RaceName", "PlayerRace") ?? primary.Race;
         primary.StartingClass = FirstCanonical(strings, CharacterCalculator.Classes, "Class", "ClassName", "CharacterClass") ?? primary.StartingClass;
         primary.Subclass = FirstCanonical(strings, BuildOptions.SubclassesByClass.Values.SelectMany(value => value).ToArray(), "Subclass", "SubclassName") ?? primary.Subclass;
+        var canonicalPrimarySubclass = CanonicalSubclass(primary.StartingClass, primary.Subclass);
+        if (!string.IsNullOrWhiteSpace(canonicalPrimarySubclass))
+            primary.Subclasses[primary.StartingClass] = canonicalPrimarySubclass;
         primary.Level ??= FirstNumber(numeric, 1, 12, "Level", "CharacterLevel", "PartyLevel");
 
         foreach (var ability in CharacterCalculator.AbilityNames)
@@ -353,24 +397,22 @@ internal static class SaveGameService
                 primary.ClassLevels[className] = level.Value;
         }
 
-        var itemLookup = items.GroupBy(item => Normalize(item.Name)).ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
-        var equipped = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var value in strings.Where(value => LooksEquipped(value.Key, value.Path)))
+        var savedItems = new List<SavedItemReference>();
+        if (resource.Regions.TryGetValue("Items", out var itemRegion))
+            CollectSavedItems(itemRegion, savedItems);
+        var itemLookup = items
+            .SelectMany(item => item.GameIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => (Id: id, Item: item)))
+            .GroupBy(pair => pair.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().Item, StringComparer.OrdinalIgnoreCase);
+        foreach (var savedItem in savedItems.Where(item => item.IsPresent))
         {
-            var normalized = Normalize(value.Value);
-            if (itemLookup.TryGetValue(normalized, out var item))
-                equipped.Add(item.ProgressKey);
-            else
-            {
-                var match = itemLookup.FirstOrDefault(pair => pair.Key.Length >= 7 && normalized.Contains(pair.Key, StringComparison.OrdinalIgnoreCase));
-                if (!string.IsNullOrEmpty(match.Key))
-                    equipped.Add(match.Value.ProgressKey);
-            }
+            if (itemLookup.TryGetValue(savedItem.StatsId, out var item))
+                result.PresentKeys.Add(item.ProgressKey);
         }
-        primary.EquippedKeys.AddRange(equipped);
-        result.MatchedItems = equipped.Count;
-        if (equipped.Count == 0)
-            result.Warnings.Add("No equipped item names could be matched; the save may use Patch 8 ECS identifiers that are not display names.");
+        result.MatchedPresentItems = result.PresentKeys.Count;
+        result.MatchedItems = 0;
+        if (savedItems.Count > 0 && result.MatchedPresentItems == 0)
+            result.Warnings.Add("Saved item identifiers were found, but none matched this item catalogue.");
     }
 
     private static void Collect(Node node, string path, List<(string Key, string Value, string Path)> strings, List<(string Key, int Value, string Path)> numeric)
@@ -390,6 +432,23 @@ internal static class SaveGameService
                 Collect(child, nodePath, strings, numeric);
     }
 
+    private static void CollectSavedItems(Node node, List<SavedItemReference> items)
+    {
+        var stats = AttributeValue(node, "Stats")?.ToString() ?? "";
+        if (!string.IsNullOrWhiteSpace(stats))
+        {
+            TryUnsignedInteger(AttributeValue(node, "Flags"), out var flags);
+            TryInteger(AttributeValue(node, "CurrentTemplateType"), out var templateType);
+            items.Add(new SavedItemReference(stats.Trim(), flags, AttributeValue(node, "Level")?.ToString() ?? "", templateType));
+        }
+        foreach (var children in node.Children.Values)
+            foreach (var child in children)
+                CollectSavedItems(child, items);
+    }
+
+    private static object? AttributeValue(Node node, string key) =>
+        node.Attributes.FirstOrDefault(pair => pair.Key.Equals(key, StringComparison.OrdinalIgnoreCase)).Value?.Value;
+
     private static bool TryInteger(object? value, out int number)
     {
         try
@@ -397,6 +456,21 @@ internal static class SaveGameService
             if (value is byte or sbyte or short or ushort or int or uint or long or ulong)
             {
                 number = Convert.ToInt32(value);
+                return true;
+            }
+        }
+        catch (OverflowException) { }
+        number = 0;
+        return false;
+    }
+
+    private static bool TryUnsignedInteger(object? value, out ulong number)
+    {
+        try
+        {
+            if (value is byte or sbyte or short or ushort or int or uint or long or ulong)
+            {
+                number = Convert.ToUInt64(value);
                 return true;
             }
         }
@@ -421,15 +495,25 @@ internal static class SaveGameService
     private static int? FindNearbyNumber(IEnumerable<(string Key, int Value, string Path)> values, string path, int minimum, int maximum, params string[] keys) =>
         values.Where(value => value.Path.Equals(path, StringComparison.OrdinalIgnoreCase) && value.Value >= minimum && value.Value <= maximum && keys.Contains(value.Key, StringComparer.OrdinalIgnoreCase)).Select(value => (int?)value.Value).FirstOrDefault();
 
-    private static bool LooksEquipped(string key, string path) =>
-        key.Contains("Equip", StringComparison.OrdinalIgnoreCase) || key.Contains("Slot", StringComparison.OrdinalIgnoreCase) ||
-        path.Contains("Equip", StringComparison.OrdinalIgnoreCase) || path.Contains("Wield", StringComparison.OrdinalIgnoreCase);
-
     private static bool IsAutoSave(string path) => path.Contains("AutoSave_", StringComparison.OrdinalIgnoreCase);
-    private static string Normalize(string value) => new(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+    private static string NormalizeToken(string value) => new(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
 
     private static string CanonicalMatch(string? value, string[] choices) =>
         choices.FirstOrDefault(choice => choice.Equals(value, StringComparison.OrdinalIgnoreCase)) ?? "";
+
+    private static string CanonicalSubclass(string className, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(className) || string.IsNullOrWhiteSpace(value))
+            return "";
+        var normalized = NormalizeToken(value);
+        return BuildOptions.SubclassesByClass.GetValueOrDefault(className, [])
+            .FirstOrDefault(choice =>
+            {
+                var canonical = NormalizeToken(choice);
+                return canonical.Equals(normalized, StringComparison.OrdinalIgnoreCase)
+                       || (normalized.Length >= 4 && canonical.EndsWith(normalized, StringComparison.OrdinalIgnoreCase));
+            }) ?? "";
+    }
 
     private static string? FindSidecar(string savePath, params string[] names)
     {

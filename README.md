@@ -4,7 +4,7 @@ A portable, offline Windows app for the Act 1, Act 2 and Act 3 items in the supp
 
 ## Download
 
-[Download BG3 Item Explorer — Version 1.0](https://github.com/RobzBE/bg3wikitool/releases/download/v1.0/BG3-Item-Explorer.exe)
+[Download the latest BG3 Item Explorer](https://github.com/RobzBE/bg3wikitool/releases/latest/download/BG3-Item-Explorer.exe)
 
 The release is a self-contained Windows x64 executable. Download the single `.exe`, copy it to a writable folder or USB drive, and open it; no installer or separate .NET installation is required.
 
@@ -22,11 +22,11 @@ The release is a self-contained Windows x64 executable. Download the single `.ex
 - Every template has a self-contained `BG3T1` share ID. **Copy link** exports the entire character and gear setup; **Import** restores it in another copy of the portable tool without requiring a server account.
 - The title bar contains a separate, optional **BG3 savegame link**. **Link newest** scans the standard `PlayerProfiles\Public\Savegames\Story` folder for the newest manual save or quicksave; **Browse** can select any `.lsv` file.
 - While linked, the save folder is monitored recursively. New and overwritten manual/quicksave files are automatically re-read after a short write-completion debounce; autosaves are deliberately ignored. A locked or half-written save is retried and never replaces the current templates on failure.
-- Save packages are opened read-only through a reduced embedded LSLib reader. Available `SaveInfo.json` and `Globals.lsf` data is used to update party names, level, race, class, abilities and matched equipped item names. Unknown Patch 8 ECS identifiers are reported instead of guessed.
+- Save packages are opened read-only through a reduced embedded LSLib reader. Available `SaveInfo.json` and `Globals.lsf` data updates party metadata and matches Patch 8 item stat identifiers against the offline catalogue, automatically checking matching grid items as found.
 - The local save path, sync timestamp and monitoring state are stored only in `BG3-Item-Explorer-progress.json`. They are never included in a `BG3T1` share ID or link, and the app remains fully usable on PCs without BG3 or save files.
 - Persistent race, starting class, per-class multiclass level distribution, difficulty and level-1 ability scores. Total character level is capped at 12; Explorer automatically keeps the build single-classed.
 - Multiclass calculations use total character level for proficiency, the starting class for saving-throw proficiencies and first-level HP, each class for its subsequent HP, and BG3's reduced multiclass armour proficiencies. The displayed spell attack/DC uses the active class with the strongest relevant casting ability.
-- The starting/main class has a level-aware subclass selector containing the current BG3 subclasses. Mathematically modelled main-class and subclass toggles are kept in their own block instead of being mixed with active spells.
+- Every active class has a level-aware subclass selector containing the current BG3 subclasses, including secondary multiclass choices. Mathematically modelled class and subclass toggles are kept in their own block instead of being mixed with active spells.
 - A separate Build tab provides class-dependent fighting styles, all 41 BG3 feats, feat choices and feat slots. Slots follow each individual class level (4/8/12), including Fighter 6 and Rogue 10.
 - Active spells and combat conditions can be toggled. Concentration is mutually exclusive, upcast variants such as Aid and Magic Weapon are grouped, and unmet prerequisites are shown instead of silently granting a bonus.
 - Permanent bonuses from all three acts can be selected, including ability choices and stat effects such as Auntie Ethel's Hair, Potion of Everlasting Vigour, Mirror of Loss, Forbidden Knowledge, Anointed in Splendour, Sweet Stone Features and the Tharchiate Codex blessing.

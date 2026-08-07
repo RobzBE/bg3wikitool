@@ -196,10 +196,9 @@ internal static class BuildOptions
 
     public static ClassOptionDefinition[] AvailableClassOptions(CharacterState state) =>
         ClassOptions.Where(option =>
-                option.ClassName.Equals(state.ClassName, StringComparison.OrdinalIgnoreCase)
-                && state.GetClassLevel(option.ClassName) >= option.MinimumLevel
+                state.GetClassLevel(option.ClassName) >= option.MinimumLevel
                 && (string.IsNullOrWhiteSpace(option.SubclassName)
-                    || option.SubclassName.Equals(state.SubclassName, StringComparison.OrdinalIgnoreCase)))
+                    || option.SubclassName.Equals(state.GetSubclass(option.ClassName), StringComparison.OrdinalIgnoreCase)))
             .ToArray();
 
     private static string[] AbilityImprovementChoices()

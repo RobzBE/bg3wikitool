@@ -1,6 +1,10 @@
 bin/
 obj/
 .vs/
+.dotnet/
+.dotnet-home/
+.nuget/
+artifacts/
 publish/*
 !publish/BG3-Item-Explorer.exe
 *.user

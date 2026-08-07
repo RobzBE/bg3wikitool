@@ -1469,8 +1469,8 @@ public sealed class MainForm : Form
             _saveLink.LastImportedWriteUtc = imported.WriteUtc;
             SaveProgressWithWarning();
             var details = imported.Warnings.Count == 0
-                ? Localization.Format("SaveImportDetails", imported.Characters.Count, imported.MatchedItems)
-                : Localization.Format("SaveImportDetails", imported.Characters.Count, imported.MatchedItems) + Environment.NewLine + string.Join(Environment.NewLine, imported.Warnings);
+                ? Localization.Format("SaveImportDetails", imported.Characters.Count, imported.MatchedPresentItems)
+                : Localization.Format("SaveImportDetails", imported.Characters.Count, imported.MatchedPresentItems) + Environment.NewLine + string.Join(Environment.NewLine, imported.Warnings);
             RefreshSaveStatus(Localization.Format("SaveSynced", SaveGameService.SaveKind(imported.SavePath), imported.WriteUtc.ToLocalTime().ToString("g")), details);
             if (showErrors && imported.Warnings.Count > 0)
                 MessageBox.Show(this, details, Localization.T("SaveGameLink"), MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -1506,6 +1506,8 @@ public sealed class MainForm : Form
             SaveGameService.MergeInto(_characters[targetIndex], source);
         }
 
+        foreach (var item in _allItems.Where(item => imported.PresentKeys.Contains(item.ProgressKey)))
+            item.Found = true;
         var active = _characters[_activeCharacterIndex];
         foreach (var item in _allItems)
             item.Equipped = active.EquippedKeys.Contains(item.ProgressKey, StringComparer.OrdinalIgnoreCase);

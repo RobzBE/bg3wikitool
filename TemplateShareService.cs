@@ -83,6 +83,7 @@ internal static class TemplateShareService
         target.Race = source.Race;
         target.ClassName = source.ClassName;
         target.SubclassName = source.SubclassName;
+        target.Subclasses = new Dictionary<string, string>(source.Subclasses, StringComparer.OrdinalIgnoreCase);
         target.Difficulty = source.Difficulty;
         target.Level = source.Level;
         target.ClassLevels = new Dictionary<string, int>(source.ClassLevels, StringComparer.OrdinalIgnoreCase);
