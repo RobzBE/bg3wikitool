@@ -524,7 +524,7 @@ public sealed class MainForm : Form
         _contentCharacterSplit.BackColor = Theme.Gold;
         host.Controls.Add(_contentCharacterSplit);
         if (_contentCharacterSplit.Width > 850)
-            _contentCharacterSplit.SplitterDistance = Math.Clamp((int)(_contentCharacterSplit.Width * 0.75), 600, _contentCharacterSplit.Width - 225);
+            _contentCharacterSplit.SplitterDistance = Math.Clamp((int)(_contentCharacterSplit.Width * 0.625), 520, _contentCharacterSplit.Width - 420);
 
         _rightSplit.Dock = DockStyle.Fill;
         _rightSplit.Orientation = Orientation.Horizontal;

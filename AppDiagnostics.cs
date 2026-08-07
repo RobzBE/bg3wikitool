@@ -98,11 +98,26 @@ internal static class AppDiagnostics
                                     && baselineStats.Threats[3].AttackBonus == 7
                                     && baselineStats.Threats[5].AttackBonus == 10
                                     && tacticianStats.Threats[1].AttackBonus == baselineStats.Threats[1].AttackBonus + 2;
+        var abilitySaveChancesApplied = baselineStats.Threats.All(threat =>
+                                            threat.SpellEffectChances.Count == 6
+                                            && threat.CharacterSpellEffectChances.Count == 6
+                                            && CharacterCalculator.AbilityNames.All(ability => threat.SpellEffectChances.ContainsKey(ability)
+                                                && threat.CharacterSpellEffectChances.ContainsKey(ability)))
+                                        && baselineStats.Threats[0].SpellEffectChances["DEX"]
+                                           != baselineStats.Threats[0].SpellEffectChances["CON"];
+        var characterBenchmarksApplied = baselineStats.Threats[0].TargetEnemy == "Grym"
+                                         && baselineStats.Threats[0].TargetArmourClass == 18
+                                         && baselineStats.Threats[0].CharacterWeaponHitChance == 40
+                                         && baselineStats.Threats[0].CharacterSpellAttackHitChance == 25
+                                         && baselineStats.Threats[4].CharacterSpellEffectChances["DEX"]
+                                            == CharacterCalculator.SavingThrowFailureChance(6, baselineStats.SpellSaveDc, 0, true, false);
         var naturalRollBoundsApplied = CharacterCalculator.AttackHitChance(100, 0) == 5
                                        && CharacterCalculator.AttackHitChance(100, 0, criticalHitImmune: true) == 0
                                        && CharacterCalculator.AttackHitChance(-100, 0) == 95
                                        && CharacterCalculator.ApplyRollMode(5, false, true) == 0.25
-                                       && CharacterCalculator.ApplyRollMode(95, true, false) == 99.75;
+                                       && CharacterCalculator.ApplyRollMode(95, true, false) == 99.75
+                                       && CharacterCalculator.AttackHitChanceWithDice(100, 0, 0, false, false, 14) == 35
+                                       && CharacterCalculator.AttackHitChanceWithDice(18, 5, 1, false, false) > 40;
         var savingThrowRulesApplied = CharacterCalculator.SavingThrowFailureChance(100, 15, 0, false, false) == 0
                                       && CharacterCalculator.SavingThrowFailureChance(-100, 15, 0, false, false) == 100
                                       && CharacterCalculator.SavingThrowFailureChance(0, 11, 0, false, false) == 50
@@ -167,6 +182,19 @@ internal static class AppDiagnostics
                                     && legacyState.GetClassLevel("Wizard") == 7
                                     && wizardFighterStats.NonProficientGear.Contains(heavyArmour.Name)
                                     && !fighterWizardStats.NonProficientGear.Contains(heavyArmour.Name);
+        var subclassState = new CharacterState
+        {
+            ClassName = "Fighter",
+            SubclassName = "Champion",
+            Level = 3,
+            ClassLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Fighter"] = 3 },
+            ActiveBuffs = ["Champion: Improved Critical Hit"]
+        };
+        var subclassStats = CharacterCalculator.Calculate(subclassState, items);
+        var subclassOptionsApplied = BuildOptions.SubclassesByClass.Count == 12
+                                     && BuildOptions.SubclassesByClass["Fighter"].Contains("Champion")
+                                     && BuildOptions.AvailableClassOptions(subclassState).Any(option => option.BuffName == "Champion: Improved Critical Hit")
+                                     && subclassStats.CriticalThreshold == 19;
 
         var alertState = new CharacterState
         {
@@ -248,6 +276,7 @@ internal static class AppDiagnostics
         var templateSharingApplied = shareLink.Contains("#template=BG3T1.", StringComparison.Ordinal)
                                      && importedTemplate.TemplateId == permanentState.TemplateId
                                      && importedTemplate.Name == permanentState.Name
+                                     && importedTemplate.SubclassName == permanentState.SubclassName
                                      && importedTemplate.EquippedKeys.SequenceEqual(permanentState.EquippedKeys)
                                      && importedTemplate.HasBuff("Bless")
                                      && importedTemplate.PermanentBonusChoice("Mirror of Loss") == "STR";
@@ -305,6 +334,7 @@ internal static class AppDiagnostics
         var criticalLoadout = new CharacterState
         {
             ClassName = "Fighter",
+            SubclassName = "Champion",
             Level = 3,
             ClassLevels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Fighter"] = 3 },
             ActiveBuffs = ["Champion: Improved Critical Hit", "Elixir of Viciousness"]
@@ -330,7 +360,7 @@ internal static class AppDiagnostics
 
         var report = new
         {
-            Passed = items.Count == 556 && uniqueProgressKeys == items.Count && loadedImages == items.Count && progressRoundTrip && characterRoundTrip && templatesRoundTrip && templateGearSetsApplied && displacementMathApplied && difficultyMathApplied && worstCaseThreatsApplied && averageThreatsApplied && naturalRollBoundsApplied && savingThrowRulesApplied && multiclassMathApplied && featAndBuffMathApplied && permanentBonusMathApplied && templateSharingApplied && criticalMathApplied && criticalGearParsingApplied && thresholdFourteenApplied && calculationsExplained && FontManager.IsAlegreyaLoaded,
+            Passed = items.Count == 556 && uniqueProgressKeys == items.Count && loadedImages == items.Count && progressRoundTrip && characterRoundTrip && templatesRoundTrip && templateGearSetsApplied && displacementMathApplied && difficultyMathApplied && worstCaseThreatsApplied && averageThreatsApplied && abilitySaveChancesApplied && characterBenchmarksApplied && naturalRollBoundsApplied && savingThrowRulesApplied && multiclassMathApplied && subclassOptionsApplied && featAndBuffMathApplied && permanentBonusMathApplied && templateSharingApplied && criticalMathApplied && criticalGearParsingApplied && thresholdFourteenApplied && calculationsExplained && FontManager.IsAlegreyaLoaded,
             ItemCount = items.Count,
             ActCounts = items.GroupBy(item => item.Act).ToDictionary(group => group.Key, group => group.Count()),
             UniqueProgressKeys = uniqueProgressKeys,
@@ -347,9 +377,12 @@ internal static class AppDiagnostics
             DifficultyMathApplied = difficultyMathApplied,
             WorstCaseThreatsApplied = worstCaseThreatsApplied,
             AverageThreatsApplied = averageThreatsApplied,
+            AbilitySaveChancesApplied = abilitySaveChancesApplied,
+            CharacterBenchmarksApplied = characterBenchmarksApplied,
             NaturalRollBoundsApplied = naturalRollBoundsApplied,
             SavingThrowRulesApplied = savingThrowRulesApplied,
             MulticlassMathApplied = multiclassMathApplied,
+            SubclassOptionsApplied = subclassOptionsApplied,
             FeatAndBuffMathApplied = featAndBuffMathApplied,
             PermanentBonusMathApplied = permanentBonusMathApplied,
             TemplateSharingApplied = templateSharingApplied,

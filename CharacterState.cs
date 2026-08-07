@@ -6,6 +6,7 @@ internal sealed class CharacterState
     public string Name { get; set; } = "Character";
     public string Race { get; set; } = "Human";
     public string ClassName { get; set; } = "Fighter";
+    public string SubclassName { get; set; } = "";
     public string Difficulty { get; set; } = "Balanced";
     public int Level { get; set; } = 1;
     public Dictionary<string, int> ClassLevels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -91,6 +92,16 @@ internal sealed class CharacterState
             .Where(pair => pair.Value > 0)
             .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
         Level = ClassLevels.Values.Sum();
+        var subclasses = BuildOptions.SubclassesByClass.GetValueOrDefault(ClassName, []);
+        if (string.IsNullOrWhiteSpace(SubclassName)
+            && ClassName.Equals("Fighter", StringComparison.OrdinalIgnoreCase)
+            && GetClassLevel("Fighter") >= 3
+            && ActiveBuffs?.Contains("Champion: Improved Critical Hit", StringComparer.OrdinalIgnoreCase) == true)
+            SubclassName = "Champion";
+        if (GetClassLevel(ClassName) < BuildOptions.SubclassLevel(ClassName))
+            SubclassName = "";
+        else if (!subclasses.Contains(SubclassName, StringComparer.OrdinalIgnoreCase))
+            SubclassName = subclasses.FirstOrDefault() ?? "";
         FightingStyles ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         Feats ??= [];
         EquippedKeys ??= [];
@@ -98,6 +109,8 @@ internal sealed class CharacterState
         EnabledConditionalEffects ??= [];
         ActiveBuffs ??= [];
         ActiveBuffs = ActiveBuffs.Where(name => BuildOptions.FindBuff(name) is not null).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var availableClassOptions = BuildOptions.AvailableClassOptions(this).Select(option => option.BuffName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        ActiveBuffs.RemoveAll(name => BuildOptions.IsClassOption(name) && !availableClassOptions.Contains(name));
         PermanentBonuses ??= [];
         PermanentBonuses = PermanentBonuses
             .Where(selection => PermanentBonusCatalog.Find(selection.Name) is not null)

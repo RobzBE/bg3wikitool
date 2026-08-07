@@ -13,6 +13,7 @@ internal sealed class CharacterSheetPanel : UserControl
     private readonly Button _importShareId = new();
     private readonly ComboBox _race = new();
     private readonly ComboBox _class = new();
+    private readonly ComboBox _subclass = new();
     private readonly ComboBox _difficulty = new();
     private readonly NumericUpDown _level = new();
     private readonly Dictionary<string, NumericUpDown> _abilities = [];
@@ -44,6 +45,7 @@ internal sealed class CharacterSheetPanel : UserControl
     private readonly Label _conditionsCaption = new();
     private readonly Label _raceCaption = new();
     private readonly Label _classCaption = new();
+    private readonly Label _subclassCaption = new();
     private readonly Label _levelCaption = new();
     private readonly Label _difficultyCaption = new();
     private readonly Label _difficultyInfo = new();
@@ -63,10 +65,15 @@ internal sealed class CharacterSheetPanel : UserControl
     private readonly Label _offense = new();
     private readonly Label _defense = new();
     private readonly Label _saves = new();
-    private readonly FlowLayoutPanel _threats = new();
+    private readonly FlowLayoutPanel _enemyThreats = new();
+    private readonly FlowLayoutPanel _characterThreats = new();
+    private readonly Label _characterThreatCaption = new();
     private readonly ListBox _equipment = new();
     private readonly CheckedListBox _conditions = new();
     private readonly CheckedListBox _buffs = new();
+    private readonly CheckedListBox _classOptions = new();
+    private readonly Label _classOptionsCaption = new();
+    private readonly Label _classOptionInfo = new();
     private readonly Label _benchmarkNote = new();
     private readonly TabControl _tabs = new();
     private readonly TabPage _buildTab = new();
@@ -121,17 +128,20 @@ internal sealed class CharacterSheetPanel : UserControl
         _conditionsCaption.Text = Localization.T("ActiveConditions");
         _raceCaption.Text = Localization.T("Race");
         _classCaption.Text = Localization.T("StartClass");
+        _subclassCaption.Text = Localization.T("MainSubclass");
         _levelCaption.Text = Localization.T("TotalLevel");
         _classLevelsCaption.Text = Localization.T("ClassLevels");
         _classFeaturesCaption.Text = Localization.T("ClassFeatures");
         _featsCaption.Text = Localization.T("Feats");
         _activeBuffsCaption.Text = Localization.T("ActiveSpellsConditions");
+        _classOptionsCaption.Text = Localization.T("ClassSubclassOptions");
         _permanentBonusesCaption.Text = Localization.T("PermanentBonuses");
         _buildTab.Text = Localization.T("BuildTab");
         _statsTab.Text = Localization.T("StatsTab");
         _difficultyCaption.Text = Localization.T("Difficulty");
         _difficultyInfo.Text = Localization.T("Difficulty" + (_difficulty.SelectedItem as string ?? _state.Difficulty));
         _benchmarkNote.Text = Localization.T("BenchmarkNote");
+        _characterThreatCaption.Text = Localization.T("CharacterHitChance");
         RefreshTemplateSelector();
         RefreshClassLevelControls();
         RefreshBuildOptionControls();
@@ -212,12 +222,14 @@ internal sealed class CharacterSheetPanel : UserControl
         identity.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 52));
         ConfigureCombo(_race);
         ConfigureCombo(_class);
+        ConfigureCombo(_subclass);
         ConfigureCombo(_difficulty);
         _race.Items.AddRange(CharacterCalculator.Races);
         _class.Items.AddRange(CharacterCalculator.Classes);
         _difficulty.Items.AddRange(CharacterCalculator.Difficulties);
         ConfigureCaption(_raceCaption);
         ConfigureCaption(_classCaption);
+        ConfigureCaption(_subclassCaption);
         ConfigureCaption(_levelCaption);
         ConfigureCaption(_difficultyCaption);
         identity.Controls.Add(_raceCaption, 0, 0);
@@ -238,6 +250,10 @@ internal sealed class CharacterSheetPanel : UserControl
         ConfigureBody(_difficultyInfo, true);
         identity.Controls.Add(_difficultyInfo, 0, 4);
         identity.SetColumnSpan(_difficultyInfo, 2);
+        identity.Controls.Add(_subclassCaption, 0, 5);
+        identity.SetColumnSpan(_subclassCaption, 2);
+        identity.Controls.Add(_subclass, 0, 6);
+        identity.SetColumnSpan(_subclass, 2);
         content.Controls.Add(identity);
 
         ConfigureSection(_classLevelsCaption);
@@ -354,6 +370,17 @@ internal sealed class CharacterSheetPanel : UserControl
         content.Controls.Add(_buffs);
         ConfigureBody(_buffInfo, true);
         content.Controls.Add(_buffInfo);
+
+        ConfigureSection(_classOptionsCaption);
+        content.Controls.Add(_classOptionsCaption);
+        _classOptions.Dock = DockStyle.Top;
+        _classOptions.Height = 120;
+        _classOptions.CheckOnClick = true;
+        _classOptions.Font = Theme.Body(8f);
+        _classOptions.BackColor = Theme.Parchment;
+        content.Controls.Add(_classOptions);
+        ConfigureBody(_classOptionInfo, true);
+        content.Controls.Add(_classOptionInfo);
         ConfigureBody(_buildWarnings);
         _buildWarnings.ForeColor = Theme.Crimson;
         content.Controls.Add(_buildWarnings);
@@ -393,14 +420,22 @@ internal sealed class CharacterSheetPanel : UserControl
         statsContent.Controls.Add(_defense);
         statsContent.Controls.Add(_saves);
 
+        var threatHeadings = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, Margin = new Padding(0, 4, 0, 2) };
+        threatHeadings.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        threatHeadings.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         ConfigureSection(_threatCaption);
-        statsContent.Controls.Add(_threatCaption);
-        _threats.Dock = DockStyle.Top;
-        _threats.AutoSize = true;
-        _threats.FlowDirection = FlowDirection.TopDown;
-        _threats.WrapContents = false;
-        _threats.Margin = new Padding(0, 0, 0, 3);
-        statsContent.Controls.Add(_threats);
+        ConfigureSection(_characterThreatCaption);
+        threatHeadings.Controls.Add(_threatCaption, 0, 0);
+        threatHeadings.Controls.Add(_characterThreatCaption, 1, 0);
+        statsContent.Controls.Add(threatHeadings);
+        var threatColumns = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, Margin = new Padding(0, 0, 0, 3) };
+        threatColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        threatColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        ConfigureThreatFlow(_enemyThreats);
+        ConfigureThreatFlow(_characterThreats);
+        threatColumns.Controls.Add(_enemyThreats, 0, 0);
+        threatColumns.Controls.Add(_characterThreats, 1, 0);
+        statsContent.Controls.Add(threatColumns);
         ConfigureBody(_benchmarkNote, true);
         statsContent.Controls.Add(_benchmarkNote);
 
@@ -472,6 +507,7 @@ internal sealed class CharacterSheetPanel : UserControl
         _class.SelectedItem = CharacterCalculator.Classes.Contains(_state.ClassName) ? _state.ClassName : "Fighter";
         _difficulty.SelectedItem = CharacterCalculator.Difficulties.Contains(_state.Difficulty) ? _state.Difficulty : "Balanced";
         RefreshClassLevelControls();
+        RefreshSubclassControl();
         foreach (var ability in CharacterCalculator.AbilityNames)
             _abilities[ability].Value = Math.Clamp(_state.GetAbility(ability), 3, 20);
         _difficultyInfo.Text = Localization.T("Difficulty" + (_difficulty.SelectedItem as string ?? "Balanced"));
@@ -497,6 +533,7 @@ internal sealed class CharacterSheetPanel : UserControl
         _importShareId.Click += (_, _) => ImportShareId();
         _race.SelectedIndexChanged += (_, _) => UpdateStateFromControls();
         _class.SelectedIndexChanged += (_, _) => ChangeStartingClass();
+        _subclass.SelectedIndexChanged += (_, _) => UpdateStateFromControls();
         _difficulty.SelectedIndexChanged += (_, _) => UpdateStateFromControls();
         foreach (var box in _classLevels.Values)
             box.ValueChanged += (_, _) => UpdateStateFromControls();
@@ -523,7 +560,13 @@ internal sealed class CharacterSheetPanel : UserControl
             if (_buffs.SelectedItem is BuffOption option)
                 _buffInfo.Text = option.Definition.Description + (option.Definition.Concentration ? "  [Concentration]" : "");
         };
-        _buffs.ItemCheck += (_, eventArgs) => HandleBuffCheck(eventArgs);
+        _buffs.ItemCheck += (_, eventArgs) => HandleBuffCheck(_buffs, eventArgs);
+        _classOptions.SelectedIndexChanged += (_, _) =>
+        {
+            if (_classOptions.SelectedItem is BuffOption option)
+                _classOptionInfo.Text = option.Definition.Description;
+        };
+        _classOptions.ItemCheck += (_, eventArgs) => HandleBuffCheck(_classOptions, eventArgs);
         _permanentBonuses.SelectedIndexChanged += (_, _) => RefreshPermanentBonusSelection();
         _permanentBonuses.ItemCheck += (_, eventArgs) => HandlePermanentBonusCheck(eventArgs);
         _permanentBonusChoice.SelectedIndexChanged += (_, _) => UpdatePermanentBonusChoice();
@@ -546,6 +589,7 @@ internal sealed class CharacterSheetPanel : UserControl
             return;
         _state.Race = _race.SelectedItem as string ?? "Human";
         _state.ClassName = _class.SelectedItem as string ?? "Fighter";
+        _state.SubclassName = _subclass.SelectedItem as string ?? "";
         _state.Difficulty = _difficulty.SelectedItem as string ?? "Balanced";
         _difficultyInfo.Text = Localization.T("Difficulty" + _state.Difficulty);
         foreach (var pair in _classLevels)
@@ -577,6 +621,7 @@ internal sealed class CharacterSheetPanel : UserControl
                 Choice = slot.Choice.SelectedItem as string ?? ""
             }).ToList();
         _featSummary.Text = Localization.Format("FeatSlots", featSlotCount);
+        RefreshBuildOptionControls();
         RefreshCalculations();
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -595,6 +640,7 @@ internal sealed class CharacterSheetPanel : UserControl
             _state.ClassLevels[newClass] = 1;
         }
         _state.ClassName = newClass;
+        _state.SubclassName = "";
         _state.NormalizeClassLevels(!_state.Difficulty.Equals("Explorer", StringComparison.OrdinalIgnoreCase));
         RefreshClassLevelControls();
         UpdateStateFromControls();
@@ -613,6 +659,30 @@ internal sealed class CharacterSheetPanel : UserControl
         _level.Value = Math.Clamp(_state.TotalLevel, 1, 12);
         _classLevelSummary.Text = Localization.Format("ClassLevelSummary", _state.TotalLevel, 12)
                                   + (multiclassAllowed ? "" : Environment.NewLine + Localization.T("ExplorerMulticlassDisabled"));
+        RefreshSubclassControl();
+        _updating = previousUpdating;
+    }
+
+    private void RefreshSubclassControl()
+    {
+        var previousUpdating = _updating;
+        _updating = true;
+        var className = _class.SelectedItem as string ?? _state.ClassName;
+        var classLevel = _state.GetClassLevel(className);
+        var requiredLevel = BuildOptions.SubclassLevel(className);
+        var subclasses = BuildOptions.SubclassesByClass.GetValueOrDefault(className, []);
+        _subclass.BeginUpdate();
+        _subclass.Items.Clear();
+        if (classLevel < requiredLevel)
+            _subclass.Items.Add(Localization.Format("SubclassAtLevel", requiredLevel));
+        else
+            _subclass.Items.AddRange(subclasses);
+        var selected = classLevel >= requiredLevel && subclasses.Contains(_state.SubclassName, StringComparer.OrdinalIgnoreCase)
+            ? _state.SubclassName
+            : _subclass.Items[0] as string;
+        _subclass.SelectedItem = selected;
+        _subclass.Enabled = classLevel >= requiredLevel;
+        _subclass.EndUpdate();
         _updating = previousUpdating;
     }
 
@@ -653,9 +723,20 @@ internal sealed class CharacterSheetPanel : UserControl
 
         _buffs.BeginUpdate();
         _buffs.Items.Clear();
-        foreach (var buff in BuildOptions.Buffs)
+        foreach (var buff in BuildOptions.Buffs.Where(buff => !BuildOptions.IsClassOption(buff.Name)))
             _buffs.Items.Add(new BuffOption(buff), _state.HasBuff(buff.Name));
         _buffs.EndUpdate();
+
+        _classOptions.BeginUpdate();
+        _classOptions.Items.Clear();
+        foreach (var option in BuildOptions.AvailableClassOptions(_state))
+        {
+            var buff = BuildOptions.FindBuff(option.BuffName)!;
+            _classOptions.Items.Add(new BuffOption(buff), _state.HasBuff(buff.Name));
+        }
+        if (_classOptions.Items.Count == 0)
+            _classOptions.Items.Add(Localization.T("NoClassOptions"), false);
+        _classOptions.EndUpdate();
 
         var selectedPermanentName = (_permanentBonuses.SelectedItem as PermanentBonusOption)?.Definition.Name;
         _permanentBonuses.BeginUpdate();
@@ -753,9 +834,9 @@ internal sealed class CharacterSheetPanel : UserControl
             _featSummary.Text = definition.Description;
     }
 
-    private void HandleBuffCheck(ItemCheckEventArgs eventArgs)
+    private void HandleBuffCheck(CheckedListBox source, ItemCheckEventArgs eventArgs)
     {
-        if (_updating || _buffs.Items[eventArgs.Index] is not BuffOption option)
+        if (_updating || source.Items[eventArgs.Index] is not BuffOption option)
             return;
         var enabled = eventArgs.NewValue == CheckState.Checked;
         BeginInvoke(() =>
@@ -815,11 +896,17 @@ internal sealed class CharacterSheetPanel : UserControl
             ? Localization.T("AllRequirementsMet")
             : Localization.T("UnmetRequirementsTitle") + Environment.NewLine + string.Join(Environment.NewLine, stats.BuildWarnings.Select(warning => "• " + warning));
 
-        _threats.SuspendLayout();
-        _threats.Controls.Clear();
+        _enemyThreats.SuspendLayout();
+        _characterThreats.SuspendLayout();
+        _enemyThreats.Controls.Clear();
+        _characterThreats.Controls.Clear();
         foreach (var threat in stats.Threats)
-            _threats.Controls.Add(CreateThreatCard(threat));
-        _threats.ResumeLayout();
+        {
+            _enemyThreats.Controls.Add(CreateThreatCard(threat, characterChance: false));
+            _characterThreats.Controls.Add(CreateThreatCard(threat, characterChance: true));
+        }
+        _enemyThreats.ResumeLayout();
+        _characterThreats.ResumeLayout();
 
         _equipment.Items.Clear();
         foreach (var item in _items.Where(item => item.Equipped).OrderBy(GearRules.SlotFor).ThenBy(item => item.Name))
@@ -846,12 +933,12 @@ internal sealed class CharacterSheetPanel : UserControl
         _updating = false;
     }
 
-    private Control CreateThreatCard(ActThreat threat)
+    private Control CreateThreatCard(ActThreat threat, bool characterChance)
     {
         var panel = new Panel
         {
-            Width = Math.Max(210, ClientSize.Width - 35),
-            Height = 104,
+            Width = 206,
+            Height = 132,
             BackColor = Color.FromArgb(238, 220, 184),
             Margin = new Padding(0, 0, 0, 4),
             Padding = new Padding(7, 4, 7, 3)
@@ -867,17 +954,36 @@ internal sealed class CharacterSheetPanel : UserControl
         var values = new Label
         {
             Dock = DockStyle.Fill,
-            Text = Localization.Format(
-                "ThreatLine",
-                FormatChance(threat.AttackHitChance), threat.AttackEnemy, threat.AttackBonus,
-                FormatChance(threat.SpellAttackHitChance), threat.SpellEnemy, threat.SpellAttackBonus,
-                FormatChance(threat.SpellEffectChance), threat.SpellDc, threat.SpellSaveAbility),
-            Font = Theme.Body(8f),
+            Text = characterChance
+                ? Localization.Format(
+                    "CharacterThreatLine",
+                    FormatChance(threat.CharacterWeaponHitChance), threat.TargetEnemy, threat.TargetArmourClass,
+                    FormatChance(threat.CharacterSpellAttackHitChance), threat.TargetArmourClass,
+                    threat.CharacterSpellSaveDc,
+                    FormatSaveChances(threat.CharacterSpellEffectChances))
+                : Localization.Format(
+                    "EnemyThreatLine",
+                    FormatChance(threat.AttackHitChance), threat.AttackEnemy, threat.AttackBonus,
+                    FormatChance(threat.SpellAttackHitChance), threat.SpellEnemy, threat.SpellAttackBonus,
+                    threat.SpellDc, FormatSaveChances(threat.SpellEffectChances)),
+            Font = Theme.Body(7.35f),
             ForeColor = Theme.Ink
         };
         panel.Controls.Add(values);
         panel.Controls.Add(title);
         return panel;
+    }
+
+    private static string FormatSaveChances(IReadOnlyDictionary<string, double> chances) =>
+        string.Join("  ", CharacterCalculator.AbilityNames.Select(ability => $"{ability} {FormatChance(chances[ability])}%"));
+
+    private static void ConfigureThreatFlow(FlowLayoutPanel flow)
+    {
+        flow.Dock = DockStyle.Top;
+        flow.AutoSize = true;
+        flow.FlowDirection = FlowDirection.TopDown;
+        flow.WrapContents = false;
+        flow.Margin = new Padding(0);
     }
 
     private static string FormatChance(double chance)

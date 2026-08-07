@@ -19,7 +19,14 @@ internal sealed record EnemyThreatProfile(
     string AttackCreatureType,
     string SpellEnemy,
     int SpellDc,
-    string SpellCreatureType);
+    string SpellCreatureType,
+    EnemyDefenseProfile Defense);
+
+internal sealed record EnemyDefenseProfile(
+    string Enemy,
+    int ArmourClass,
+    IReadOnlyDictionary<string, int> Saves,
+    bool MagicResistance = false);
 
 internal sealed record ActThreat(
     string Act,
@@ -32,7 +39,14 @@ internal sealed record ActThreat(
     double AttackHitChance,
     double SpellAttackHitChance,
     double SpellEffectChance,
-    string SpellSaveAbility);
+    string SpellSaveAbility,
+    IReadOnlyDictionary<string, double> SpellEffectChances,
+    string TargetEnemy,
+    int TargetArmourClass,
+    double CharacterWeaponHitChance,
+    double CharacterSpellAttackHitChance,
+    int CharacterSpellSaveDc,
+    IReadOnlyDictionary<string, double> CharacterSpellEffectChances);
 
 internal sealed class CharacterStats
 {
@@ -108,27 +122,27 @@ internal static partial class CharacterCalculator
     {
         ["Balanced"] =
         [
-            new("ACT 1", "Grym", 11, "Construct", "Grym", 19, "Construct"),
-            new("ACT 2", "Apostle of Myrkul", 10, "Undead", "Apostle of Myrkul", 17, "Undead"),
-            new("ACT 3", "Dominated Red Dragon", 14, "Dragon", "Netherbrain", 23, "Aberration")
+            new("ACT 1", "Grym", 11, "Construct", "Grym", 19, "Construct", Defense("Grym", 18, 7, 2, 7, -4, 4, -5)),
+            new("ACT 2", "Apostle of Myrkul", 10, "Undead", "Apostle of Myrkul", 17, "Undead", Defense("Apostle of Myrkul", 19, 6, 1, 6, 2, 7, 9)),
+            new("ACT 3", "Dominated Red Dragon", 14, "Dragon", "Netherbrain", 23, "Aberration", Defense("Dominated Red Dragon", 19, 8, 6, 13, 3, 7, 11, true))
         ],
         ["Explorer"] =
         [
-            new("ACT 1", "Grym", 13, "Construct", "Grym", 21, "Construct"),
-            new("ACT 2", "Apostle of Myrkul", 12, "Undead", "Apostle of Myrkul", 19, "Undead"),
-            new("ACT 3", "Dominated Red Dragon", 16, "Dragon", "Netherbrain", 25, "Aberration")
+            new("ACT 1", "Grym", 13, "Construct", "Grym", 21, "Construct", Defense("Grym", 18, 7, 4, 7, -4, 6, -5)),
+            new("ACT 2", "Apostle of Myrkul", 12, "Undead", "Apostle of Myrkul", 19, "Undead", Defense("Apostle of Myrkul", 19, 6, 1, 6, 2, 9, 11)),
+            new("ACT 3", "Dominated Red Dragon", 16, "Dragon", "Netherbrain", 25, "Aberration", Defense("Dominated Red Dragon", 19, 8, 8, 15, 3, 9, 13, true))
         ],
         ["Tactician"] =
         [
-            new("ACT 1", "Grym", 13, "Construct", "Grym", 21, "Construct"),
-            new("ACT 2", "Apostle of Myrkul", 13, "Undead", "Apostle of Myrkul", 21, "Undead"),
-            new("ACT 3", "Dominated Red Dragon", 16, "Dragon", "Netherbrain", 25, "Aberration")
+            new("ACT 1", "Grym", 13, "Construct", "Grym", 21, "Construct", Defense("Grym", 18, 7, 2, 7, -4, 4, -5)),
+            new("ACT 2", "Apostle of Myrkul", 13, "Undead", "Apostle of Myrkul", 21, "Undead", Defense("Apostle of Myrkul", 20, 7, 2, 6, 2, 7, 11)),
+            new("ACT 3", "Dominated Red Dragon", 16, "Dragon", "Netherbrain", 25, "Aberration", Defense("Dominated Red Dragon", 19, 8, 6, 13, 3, 7, 11, true))
         ],
         ["Honour"] =
         [
-            new("ACT 1", "Grym", 13, "Construct", "Grym", 21, "Construct"),
-            new("ACT 2", "Apostle of Myrkul", 13, "Undead", "Apostle of Myrkul", 21, "Undead"),
-            new("ACT 3", "Dominated Red Dragon", 16, "Dragon", "Netherbrain", 25, "Aberration")
+            new("ACT 1", "Grym", 13, "Construct", "Grym", 21, "Construct", Defense("Grym", 18, 7, 2, 7, -4, 4, -5)),
+            new("ACT 2", "Apostle of Myrkul", 13, "Undead", "Apostle of Myrkul", 21, "Undead", Defense("Apostle of Myrkul", 20, 7, 2, 6, 2, 7, 11)),
+            new("ACT 3", "Dominated Red Dragon", 16, "Dragon", "Netherbrain", 25, "Aberration", Defense("Dominated Red Dragon", 19, 8, 6, 13, 3, 7, 11, true))
         ]
     };
 
@@ -145,10 +159,16 @@ internal static partial class CharacterCalculator
 
     private static EnemyThreatProfile[] CreateAverageThreats(int difficultyBonus) =>
     [
-        new("ACT 1", "Average enemy", 5 + difficultyBonus, "Mixed", "Average caster", 13 + difficultyBonus, "Mixed"),
-        new("ACT 2", "Average enemy", 7 + difficultyBonus, "Mixed", "Average caster", 15 + difficultyBonus, "Mixed"),
-        new("ACT 3", "Average enemy", 10 + difficultyBonus, "Mixed", "Average caster", 18 + difficultyBonus, "Mixed")
+        new("ACT 1", "Average enemy", 5 + difficultyBonus, "Mixed", "Average caster", 13 + difficultyBonus, "Mixed", Defense("Average Act 1 enemy", 14, 2, 2, 2, 0, 1, 0)),
+        new("ACT 2", "Average enemy", 7 + difficultyBonus, "Mixed", "Average caster", 15 + difficultyBonus, "Mixed", Defense("Average Act 2 enemy", 16, 4, 3, 4, 1, 3, 1)),
+        new("ACT 3", "Average enemy", 10 + difficultyBonus, "Mixed", "Average caster", 18 + difficultyBonus, "Mixed", Defense("Average Act 3 enemy", 18, 6, 5, 6, 3, 5, 3))
     ];
+
+    private static EnemyDefenseProfile Defense(string enemy, int armourClass, int str, int dex, int con, int intelligence, int wis, int cha, bool magicResistance = false) =>
+        new(enemy, armourClass, new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["STR"] = str, ["DEX"] = dex, ["CON"] = con, ["INT"] = intelligence, ["WIS"] = wis, ["CHA"] = cha
+        }, magicResistance);
 
     public static CharacterStats Calculate(CharacterState state, IEnumerable<ItemRecord> allItems)
     {
@@ -199,7 +219,8 @@ internal static partial class CharacterCalculator
         var criticalReduction = criticalEffects.Sum(effect => Math.Max(1, effect.Value));
         var criticalLines = new List<string> { Localization.T("CriticalBase") };
         criticalLines.AddRange(criticalEffects.Select(effect => $"- {Math.Max(1, effect.Value)}  {effect.ItemName}"));
-        if (state.HasBuff("Champion: Improved Critical Hit") && state.GetClassLevel("Fighter") >= 3)
+        if (state.HasBuff("Champion: Improved Critical Hit") && state.GetClassLevel("Fighter") >= 3
+            && state.SubclassName.Equals("Champion", StringComparison.OrdinalIgnoreCase))
         {
             criticalReduction++;
             criticalLines.Add("- 1  Champion: Improved Critical Hit");
@@ -290,6 +311,12 @@ internal static partial class CharacterCalculator
         var sweetStone = state.HasPermanentBonus("Sweet Stone Features");
         var attackBonusD4Count = (state.HasBuff("Bless") ? 1 : 0) + (sweetStone ? 1 : 0);
         var savingThrowBonusD4Count = (state.HasBuff("Bless") || state.HasBuff("Resistance") ? 1 : 0) + (sweetStone ? 1 : 0);
+        var playerAttackAdvantage = activeEffects.Any(effect => effect.Kind == ItemEffectKind.AttackRollAdvantage)
+                                    || state.HasBuff("Lucky: attack advantage") || state.HasBuff("Greater Invisibility")
+                                    || (state.HasBuff("Reckless Attack") && state.GetClassLevel("Barbarian") >= 2);
+        var playerAttackDisadvantage = nonProficientGear.Count > 0
+                                       || (state.HasPermanentBonus("Paid the Price") && state.HasBuff("Paid the Price: attacking a Hag"));
+        var enemySavingThrowDisadvantage = activeEffects.Any(effect => effect.Kind == ItemEffectKind.EnemySavingThrowDisadvantage);
         var sanctuary = state.HasBuff("Sanctuary");
         var threats = threatProfiles
             .SelectMany((profile, index) => new[] { (Benchmark: "WorstCase", Profile: profile), (Benchmark: "Average", Profile: averageProfiles[index]) })
@@ -299,7 +326,17 @@ internal static partial class CharacterCalculator
                 var spellAttackBonus = profile.SpellDc - 8;
                 var protectedAttack = state.HasBuff("Protection from Evil and Good") && IsProtectedCreatureType(profile.AttackCreatureType);
                 var protectedSpellAttack = state.HasBuff("Protection from Evil and Good") && IsProtectedCreatureType(profile.SpellCreatureType);
-                var spellEffect = CalculateWorstSpellEffectChance(state, profile.SpellDc, saves, activeEffects, spellSaveAdvantage, generalSaveDisadvantage, savingThrowBonusD4Count);
+                var spellEffects = CalculateSpellEffectChances(state, profile.SpellDc, saves, activeEffects, spellSaveAdvantage, generalSaveDisadvantage, savingThrowBonusD4Count);
+                var worstSpellEffect = spellEffects.OrderByDescending(value => value.Value).First();
+                var characterSpellEffects = AbilityNames.ToDictionary(
+                    ability => ability,
+                    ability => SavingThrowFailureChance(
+                        profile.Defense.Saves[ability],
+                        spellSaveDc,
+                        0,
+                        profile.Defense.MagicResistance,
+                        enemySavingThrowDisadvantage),
+                    StringComparer.OrdinalIgnoreCase);
                 return new ActThreat(
                     profile.Act,
                     entry.Benchmark,
@@ -310,8 +347,15 @@ internal static partial class CharacterCalculator
                     profile.SpellDc,
                     sanctuary ? 0 : ApplyRollMode(AttackHitChance(armourClass, profile.AttackBonus, criticalHitImmune), enemyAttackAdvantage, enemyAttackDisadvantage || protectedAttack),
                     sanctuary ? 0 : ApplyRollMode(AttackHitChance(armourClass, spellAttackBonus, criticalHitImmune), enemyAttackAdvantage, enemySpellAttackDisadvantage || protectedSpellAttack),
-                    spellEffect.Chance,
-                    spellEffect.Ability);
+                    worstSpellEffect.Value,
+                    worstSpellEffect.Key,
+                    spellEffects,
+                    profile.Defense.Enemy,
+                    profile.Defense.ArmourClass,
+                    AttackHitChanceWithDice(profile.Defense.ArmourClass, weaponAttack, attackBonusD4Count, playerAttackAdvantage, playerAttackDisadvantage, criticalThreshold),
+                    AttackHitChanceWithDice(profile.Defense.ArmourClass, spellAttack, attackBonusD4Count, playerAttackAdvantage, playerAttackDisadvantage, spellCriticalThreshold),
+                    spellSaveDc,
+                    characterSpellEffects);
             })
             .ToList();
 
@@ -332,12 +376,9 @@ internal static partial class CharacterCalculator
             AttackAbility = attackAbility,
             Threats = threats,
             ActiveEffects = activeEffects,
-            AttackRollAdvantage = activeEffects.Any(effect => effect.Kind == ItemEffectKind.AttackRollAdvantage)
-                                  || state.HasBuff("Lucky: attack advantage") || state.HasBuff("Greater Invisibility")
-                                  || (state.HasBuff("Reckless Attack") && state.GetClassLevel("Barbarian") >= 2),
-            AttackRollDisadvantage = nonProficientGear.Count > 0
-                                      || (state.HasPermanentBonus("Paid the Price") && state.HasBuff("Paid the Price: attacking a Hag")),
-            EnemySavingThrowDisadvantage = activeEffects.Any(effect => effect.Kind == ItemEffectKind.EnemySavingThrowDisadvantage),
+            AttackRollAdvantage = playerAttackAdvantage,
+            AttackRollDisadvantage = playerAttackDisadvantage,
+            EnemySavingThrowDisadvantage = enemySavingThrowDisadvantage,
             CriticalHitImmune = criticalHitImmune,
             DamageReduction = activeEffects.Where(effect => effect.Kind == ItemEffectKind.DamageReduction).Sum(effect => effect.Value)
                               + (state.HasFeat("Heavy Armour Master") && IsWearingArmourCategory(equipped, "Heavy") ? 3 : 0),
@@ -621,8 +662,9 @@ internal static partial class CharacterCalculator
             warnings.Add("Danger Sense inactive: Barbarian level 2 required.");
         if (state.HasBuff("Indomitable") && state.GetClassLevel("Fighter") < 9)
             warnings.Add("Indomitable inactive: Fighter level 9 required.");
-        if (state.HasBuff("Champion: Improved Critical Hit") && state.GetClassLevel("Fighter") < 3)
-            warnings.Add("Champion: Improved Critical Hit inactive: Fighter level 3 required.");
+        if (state.HasBuff("Champion: Improved Critical Hit")
+            && (state.GetClassLevel("Fighter") < 3 || !state.SubclassName.Equals("Champion", StringComparison.OrdinalIgnoreCase)))
+            warnings.Add("Champion: Improved Critical Hit inactive: Fighter level 3 and Champion subclass required.");
         if (state.HasBuff("Loviatar's Love active (30% HP or less)") && !state.HasPermanentBonus("Loviatar's Love"))
             warnings.Add("Loviatar's Love condition inactive: permanent bonus not selected.");
         if (state.HasBuff("BOOOAL target is Bleeding") && !state.HasPermanentBonus("BOOOAL's Benediction"))
@@ -794,6 +836,33 @@ internal static partial class CharacterCalculator
         return successfulFaces * 5;
     }
 
+    internal static double AttackHitChanceWithDice(
+        int armourClass,
+        int attackBonus,
+        int bonusD4Count,
+        bool advantage,
+        bool disadvantage,
+        int criticalThreshold = 20)
+    {
+        var successes = 0;
+        var total = 0;
+        var bonusSums = new List<int> { 0 };
+        for (var die = 0; die < bonusD4Count; die++)
+            bonusSums = bonusSums.SelectMany(sum => Enumerable.Range(1, 4).Select(face => sum + face)).ToList();
+        for (var first = 1; first <= 20; first++)
+        for (var second = 1; second <= 20; second++)
+        foreach (var bonus in bonusSums)
+        {
+            var roll = advantage == disadvantage ? first : advantage ? Math.Max(first, second) : Math.Min(first, second);
+            if (advantage == disadvantage && second != 1)
+                continue;
+            if (roll != 1 && (roll >= criticalThreshold || roll + attackBonus + bonus >= armourClass))
+                successes++;
+            total++;
+        }
+        return Math.Round(successes * 100.0 / total, 2, MidpointRounding.AwayFromZero);
+    }
+
     internal static double SavingThrowFailureChance(int savingThrowBonus, int dc, int bonusD4Count, bool advantage, bool disadvantage)
     {
         var fails = 0;
@@ -818,7 +887,7 @@ internal static partial class CharacterCalculator
         return Math.Round(fails * 100.0 / total, 2, MidpointRounding.AwayFromZero);
     }
 
-    private static (double Chance, string Ability) CalculateWorstSpellEffectChance(
+    private static Dictionary<string, double> CalculateSpellEffectChances(
         CharacterState state,
         int dc,
         Dictionary<string, int> saves,
@@ -827,8 +896,8 @@ internal static partial class CharacterCalculator
         bool generalDisadvantage,
         int bonusD4Count)
     {
-        var probabilities = new List<(double Chance, string Ability)>();
-        foreach (var ability in new[] { "DEX", "CON", "WIS" })
+        var probabilities = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        foreach (var ability in AbilityNames)
         {
             var specificAdvantage = effects.Any(effect => effect.Kind == ItemEffectKind.SavingThrowAdvantage && effect.Scope == ability);
             if (ability == "DEX" && state.HasBuff("Haste")) specificAdvantage = true;
@@ -837,9 +906,9 @@ internal static partial class CharacterCalculator
             var chance = SavingThrowFailureChance(saves[ability], dc, bonusD4Count, generalAdvantage || specificAdvantage, generalDisadvantage);
             if (state.HasBuff("Indomitable") && state.GetClassLevel("Fighter") >= 9)
                 chance = Math.Round(chance * chance / 100.0, 2, MidpointRounding.AwayFromZero);
-            probabilities.Add((chance, ability));
+            probabilities[ability] = chance;
         }
-        return probabilities.OrderByDescending(value => value.Chance).First();
+        return probabilities;
     }
 
     internal static double ApplyRollMode(double normalChance, bool advantage, bool disadvantage)

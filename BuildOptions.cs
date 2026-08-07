@@ -13,6 +13,12 @@ internal sealed record BuffDefinition(
     string Description,
     bool Concentration = false);
 
+internal sealed record ClassOptionDefinition(
+    string BuffName,
+    string ClassName,
+    int MinimumLevel,
+    string SubclassName = "");
+
 internal static class BuildOptions
 {
     public const string None = "(None)";
@@ -27,6 +33,34 @@ internal static class BuildOptions
             ["Paladin"] = ["Defence", "Duelling", "Great Weapon Fighting", "Protection"],
             ["Ranger"] = ["Archery", "Defence", "Duelling", "Two-Weapon Fighting"]
         };
+
+    public static readonly IReadOnlyDictionary<string, string[]> SubclassesByClass =
+        new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Barbarian"] = ["Berserker", "Giant", "Wild Magic", "Wildheart"],
+            ["Bard"] = ["College of Glamour", "College of Lore", "College of Swords", "College of Valour"],
+            ["Cleric"] = ["Death Domain", "Knowledge Domain", "Life Domain", "Light Domain", "Nature Domain", "Tempest Domain", "Trickery Domain", "War Domain"],
+            ["Druid"] = ["Circle of the Land", "Circle of the Moon", "Circle of the Spores", "Circle of the Stars"],
+            ["Fighter"] = ["Arcane Archer", "Battle Master", "Champion", "Eldritch Knight"],
+            ["Monk"] = ["Way of the Drunken Master", "Way of the Four Elements", "Way of the Open Hand", "Way of Shadow"],
+            ["Paladin"] = ["Oath of the Ancients", "Oath of Devotion", "Oath of Vengeance", "Oath of the Crown", "Oathbreaker"],
+            ["Ranger"] = ["Beast Master", "Gloom Stalker", "Hunter", "Swarmkeeper"],
+            ["Rogue"] = ["Arcane Trickster", "Assassin", "Swashbuckler", "Thief"],
+            ["Sorcerer"] = ["Draconic Bloodline", "Shadow Magic", "Storm Sorcery", "Wild Magic"],
+            ["Warlock"] = ["The Archfey", "The Fiend", "The Great Old One", "The Hexblade"],
+            ["Wizard"] = ["Abjuration School", "Bladesinging", "Conjuration School", "Divination School", "Enchantment School", "Evocation School", "Illusion School", "Necromancy School", "Transmutation School"]
+        };
+
+    public static readonly ClassOptionDefinition[] ClassOptions =
+    [
+        new("Rage", "Barbarian", 1),
+        new("Reckless Attack", "Barbarian", 2),
+        new("Danger Sense", "Barbarian", 2),
+        new("Indomitable", "Fighter", 9),
+        new("Patient Defence", "Monk", 2),
+        new("Paladin Aura active", "Paladin", 6),
+        new("Champion: Improved Critical Hit", "Fighter", 3, "Champion")
+    ];
 
     public static readonly FeatDefinition[] Feats =
     [
@@ -149,6 +183,24 @@ internal static class BuildOptions
 
     public static BuffDefinition? FindBuff(string name) =>
         Buffs.FirstOrDefault(buff => buff.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+
+    public static int SubclassLevel(string className) => className switch
+    {
+        "Cleric" or "Sorcerer" or "Warlock" => 1,
+        "Druid" or "Wizard" => 2,
+        _ => 3
+    };
+
+    public static bool IsClassOption(string buffName) =>
+        ClassOptions.Any(option => option.BuffName.Equals(buffName, StringComparison.OrdinalIgnoreCase));
+
+    public static ClassOptionDefinition[] AvailableClassOptions(CharacterState state) =>
+        ClassOptions.Where(option =>
+                option.ClassName.Equals(state.ClassName, StringComparison.OrdinalIgnoreCase)
+                && state.GetClassLevel(option.ClassName) >= option.MinimumLevel
+                && (string.IsNullOrWhiteSpace(option.SubclassName)
+                    || option.SubclassName.Equals(state.SubclassName, StringComparison.OrdinalIgnoreCase)))
+            .ToArray();
 
     private static string[] AbilityImprovementChoices()
     {
