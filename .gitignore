@@ -6,3 +6,4 @@ publish/
 *.suo
 BG3-Item-Explorer-progress.json
 BG3-Item-Explorer-progress.json.tmp
+BG3-Item-Explorer-error.log

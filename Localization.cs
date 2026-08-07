@@ -66,7 +66,7 @@ internal static class Localization
         ["Footer"] = ("Non-commercial fan tool • progress is saved next to the exe", "Niet-commerciële fan-tool • voortgang wordt naast de exe opgeslagen"),
         ["ProgressError"] = ("Progress could not be saved next to the exe. Check whether the USB folder is writable.\n\n{0}", "De voortgang kon niet naast de exe worden opgeslagen. Controleer of de USB-map schrijfbaar is.\n\n{0}"),
         ["LinkError"] = ("The link could not be opened.\n\n{0}", "De link kon niet worden geopend.\n\n{0}"),
-        ["LoadError"] = ("The embedded item database could not be loaded.\n\n{0}", "De ingebedde itemdatabase kon niet worden geladen.\n\n{0}"),
+        ["LoadError"] = ("BG3 Item Explorer encountered an unexpected error.\n\n{0}\n\nDiagnostic log: {1}", "BG3 Item Explorer kreeg een onverwachte fout.\n\n{0}\n\nDiagnostisch logboek: {1}"),
         ["WarningTitle"] = ("BG3 Item Explorer", "BG3 Item Explorer"),
         ["CharacterSheet"] = ("CHARACTER SHEET", "CHARACTER SHEET"),
         ["Identity"] = ("BUILD", "BUILD"),
