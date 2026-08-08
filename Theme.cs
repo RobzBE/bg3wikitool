@@ -43,10 +43,42 @@ internal static class Theme
         combo.ForeColor = Ink;
         combo.Font = Body(fontSize);
         combo.DrawMode = DrawMode.OwnerDrawFixed;
-        combo.ItemHeight = 30;
+        combo.ItemHeight = 32;
         combo.IntegralHeight = false;
-        combo.DropDownHeight = 300;
+        combo.DropDownHeight = 320;
         combo.DrawItem += DrawComboItem;
+        combo.DropDown += ResizeComboDropDown;
+    }
+
+    public static void ConfigureInput(Control control, float fontSize = 9.5f)
+    {
+        control.Font = Body(fontSize);
+        control.BackColor = Color.White;
+        control.ForeColor = Ink;
+        control.MinimumSize = new Size(0, 34);
+        if (control is TextBox textBox)
+        {
+            textBox.AutoSize = false;
+            textBox.Height = 34;
+            textBox.BorderStyle = BorderStyle.FixedSingle;
+        }
+        else if (control is NumericUpDown numeric)
+        {
+            numeric.AutoSize = false;
+            numeric.Height = 34;
+            numeric.BorderStyle = BorderStyle.FixedSingle;
+        }
+    }
+
+    private static void ResizeComboDropDown(object? sender, EventArgs e)
+    {
+        if (sender is not ComboBox combo || combo.Items.Count == 0)
+            return;
+        var width = combo.Width;
+        using var graphics = combo.CreateGraphics();
+        foreach (var item in combo.Items)
+            width = Math.Max(width, (int)Math.Ceiling(graphics.MeasureString(combo.GetItemText(item), combo.Font).Width) + 42);
+        combo.DropDownWidth = Math.Min(width, 640);
     }
 
     private static void DrawComboItem(object? sender, DrawItemEventArgs e)

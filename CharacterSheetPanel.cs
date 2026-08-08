@@ -16,10 +16,13 @@ internal sealed class CharacterSheetPanel : UserControl
     private readonly ComboBox _subclass = new();
     private readonly ComboBox _difficulty = new();
     private readonly NumericUpDown _level = new WheelSafeNumericUpDown();
+    private readonly Label _levelBadge = new();
     private readonly Dictionary<string, NumericUpDown> _abilities = [];
     private readonly Dictionary<string, Label> _abilityTotals = [];
+    private readonly Dictionary<string, Label> _abilityModifiers = [];
     private readonly Dictionary<string, NumericUpDown> _classLevels = [];
     private readonly Dictionary<string, ComboBox> _multiclassSubclasses = [];
+    private readonly Dictionary<string, Control> _multiclassSubclassRows = [];
     private readonly Dictionary<string, ComboBox> _fightingStyles = [];
     private readonly List<FeatSlotControls> _featSlots = [];
     private readonly Label _title = new();
@@ -36,7 +39,7 @@ internal sealed class CharacterSheetPanel : UserControl
     private readonly Label _activeBuffsCaption = new();
     private readonly Label _buffInfo = new();
     private readonly Label _permanentBonusesCaption = new();
-    private readonly CheckedListBox _permanentBonuses = new();
+    private readonly CheckedListBox _permanentBonuses = new ModernCheckedListBox();
     private readonly ComboBox _permanentBonusChoice = new();
     private readonly Label _permanentBonusInfo = new();
     private readonly Label _buildWarnings = new();
@@ -71,9 +74,9 @@ internal sealed class CharacterSheetPanel : UserControl
     private readonly FlowLayoutPanel _characterThreats = new();
     private readonly Label _characterThreatCaption = new();
     private readonly ListBox _equipment = new();
-    private readonly CheckedListBox _conditions = new();
-    private readonly CheckedListBox _buffs = new();
-    private readonly CheckedListBox _classOptions = new();
+    private readonly CheckedListBox _conditions = new ModernCheckedListBox();
+    private readonly CheckedListBox _buffs = new ModernCheckedListBox();
+    private readonly CheckedListBox _classOptions = new ModernCheckedListBox();
     private readonly Label _classOptionsCaption = new();
     private readonly Label _classOptionInfo = new();
     private readonly Label _benchmarkNote = new();
@@ -140,7 +143,7 @@ internal sealed class CharacterSheetPanel : UserControl
         _raceCaption.Text = Localization.T("Race");
         _classCaption.Text = Localization.T("StartClass");
         _subclassCaption.Text = Localization.T("MainSubclass");
-        _levelCaption.Text = Localization.T("TotalLevel");
+        _levelCaption.Text = "LEVEL";
         _classLevelsCaption.Text = Localization.T("ClassLevels");
         _classFeaturesCaption.Text = Localization.T("ClassFeatures");
         _featsCaption.Text = Localization.T("Feats");
@@ -171,7 +174,7 @@ internal sealed class CharacterSheetPanel : UserControl
         var templateBar = new TableLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 100,
+            Height = 128,
             ColumnCount = 2,
             RowCount = 4,
             Padding = new Padding(10, 4, 10, 4),
@@ -179,22 +182,20 @@ internal sealed class CharacterSheetPanel : UserControl
         };
         templateBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
         templateBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
-        templateBar.RowStyles.Add(new RowStyle(SizeType.Absolute, 18));
-        templateBar.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
-        templateBar.RowStyles.Add(new RowStyle(SizeType.Absolute, 18));
-        templateBar.RowStyles.Add(new RowStyle(SizeType.Absolute, 27));
+        templateBar.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
+        templateBar.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        templateBar.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
+        templateBar.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
         ConfigureCaption(_templateCaption);
         ConfigureCaption(_characterNameCaption);
         ConfigureCaption(_shareIdCaption);
         ConfigureCombo(_template);
         _characterName.Dock = DockStyle.Top;
-        _characterName.Font = Theme.Body(8.5f);
-        _characterName.BackColor = Theme.Parchment;
+        Theme.ConfigureInput(_characterName);
         _characterName.MaxLength = 40;
         _shareId.Dock = DockStyle.Fill;
         _shareId.ReadOnly = true;
-        _shareId.Font = Theme.Body(7.25f);
-        _shareId.BackColor = Theme.Parchment;
+        Theme.ConfigureInput(_shareId, 8.5f);
         _shareId.WordWrap = false;
         var shareControls = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, Margin = new Padding(2, 0, 0, 0) };
         shareControls.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55));
@@ -228,7 +229,8 @@ internal sealed class CharacterSheetPanel : UserControl
 
         ConfigureSection(_identityCaption);
         content.Controls.Add(_identityCaption);
-        var identity = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, Margin = new Padding(0, 0, 0, 8) };
+        var identity = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 3, Margin = new Padding(0, 0, 0, 8) };
+        identity.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 78));
         identity.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 48));
         identity.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 52));
         ConfigureCombo(_race);
@@ -243,35 +245,55 @@ internal sealed class CharacterSheetPanel : UserControl
         ConfigureCaption(_subclassCaption);
         ConfigureCaption(_levelCaption);
         ConfigureCaption(_difficultyCaption);
-        identity.Controls.Add(_raceCaption, 0, 0);
-        identity.Controls.Add(_classCaption, 1, 0);
-        identity.Controls.Add(_race, 0, 1);
-        identity.Controls.Add(_class, 1, 1);
-        identity.Controls.Add(_levelCaption, 0, 2);
+        var levelCard = new SheetCardPanel { Dock = DockStyle.Fill, Height = 78, Margin = new Padding(0, 2, 5, 4) };
+        _levelCaption.Dock = DockStyle.Top;
+        _levelCaption.Height = 20;
+        _levelCaption.TextAlign = ContentAlignment.MiddleCenter;
+        _levelBadge.Dock = DockStyle.Fill;
+        _levelBadge.TextAlign = ContentAlignment.MiddleCenter;
+        _levelBadge.ForeColor = Theme.Crimson;
+        _levelBadge.Font = Theme.Heading(25f);
+        levelCard.Controls.Add(_levelBadge);
+        levelCard.Controls.Add(_levelCaption);
+        identity.Controls.Add(levelCard, 0, 0);
+        identity.SetRowSpan(levelCard, 2);
+        identity.Controls.Add(_raceCaption, 1, 0);
+        identity.Controls.Add(_classCaption, 2, 0);
+        identity.Controls.Add(_race, 1, 1);
+        identity.Controls.Add(_class, 2, 1);
         _level.Minimum = 1;
         _level.Maximum = 12;
         _level.Increment = 0;
         _level.ReadOnly = true;
         _level.InterceptArrowKeys = false;
-        _level.Dock = DockStyle.Top;
-        _level.Font = Theme.Body(9f);
-        identity.Controls.Add(_level, 0, 3);
-        identity.Controls.Add(_difficultyCaption, 1, 2);
-        identity.Controls.Add(_difficulty, 1, 3);
+        Theme.ConfigureInput(_level);
+        identity.Controls.Add(_difficultyCaption, 0, 2);
+        identity.Controls.Add(_difficulty, 0, 3);
+        identity.SetColumnSpan(_difficulty, 3);
+        identity.SetColumnSpan(_difficultyCaption, 3);
         ConfigureBody(_difficultyInfo, true);
         identity.Controls.Add(_difficultyInfo, 0, 4);
-        identity.SetColumnSpan(_difficultyInfo, 2);
+        identity.SetColumnSpan(_difficultyInfo, 3);
         identity.Controls.Add(_subclassCaption, 0, 5);
-        identity.SetColumnSpan(_subclassCaption, 2);
+        identity.SetColumnSpan(_subclassCaption, 3);
         identity.Controls.Add(_subclass, 0, 6);
-        identity.SetColumnSpan(_subclass, 2);
+        identity.SetColumnSpan(_subclass, 3);
         content.Controls.Add(identity);
 
         ConfigureSection(_classLevelsCaption);
         content.Controls.Add(_classLevelsCaption);
         var classLevels = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, Margin = new Padding(0, 0, 0, 4) };
-        classLevels.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        classLevels.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        for (var column = 0; column < 2; column++)
+            classLevels.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+        var subclassRows = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            Margin = new Padding(0, 3, 0, 4),
+            Padding = new Padding(0)
+        };
         for (var index = 0; index < CharacterCalculator.Classes.Length; index++)
         {
             var className = CharacterCalculator.Classes[index];
@@ -279,22 +301,50 @@ internal sealed class CharacterSheetPanel : UserControl
             {
                 Minimum = 0,
                 Maximum = 12,
-                Dock = DockStyle.Top,
-                Font = Theme.Body(8.5f),
+                Width = 54,
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 Tag = className,
-                Margin = new Padding(2)
+                Margin = new Padding(2, 0, 2, 0),
+                TextAlign = HorizontalAlignment.Center
             };
+            Theme.ConfigureInput(box, 10f);
             _classLevels[className] = box;
             var subclass = new ComboBox { Tag = className, Margin = new Padding(2), Visible = false };
             ConfigureCombo(subclass);
             _multiclassSubclasses[className] = subclass;
-            var cell = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Margin = new Padding(1) };
-            cell.Controls.Add(Caption(className));
-            cell.Controls.Add(box);
-            cell.Controls.Add(subclass);
+            var cell = new SheetCardPanel { Dock = DockStyle.Fill, Height = 58, Margin = new Padding(2) };
+            var classTile = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Margin = new Padding(0), Padding = new Padding(1) };
+            classTile.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            classTile.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 60));
+            var classLabel = Caption(className);
+            classLabel.Dock = DockStyle.Fill;
+            classLabel.AutoSize = false;
+            classLabel.AutoEllipsis = true;
+            classLabel.TextAlign = ContentAlignment.MiddleLeft;
+            classLabel.Font = Theme.Body(8.25f, FontStyle.Bold);
+            classTile.Controls.Add(classLabel, 0, 0);
+            classTile.Controls.Add(box, 1, 0);
+            cell.Controls.Add(classTile);
             classLevels.Controls.Add(cell, index % 2, index / 2);
+
+            var subclassRow = new TableLayoutPanel { Height = 38, ColumnCount = 2, Margin = new Padding(0, 1, 0, 1), Visible = false };
+            subclassRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 108));
+            subclassRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            var subclassLabel = Caption(className);
+            subclassLabel.Dock = DockStyle.Fill;
+            subclassLabel.TextAlign = ContentAlignment.MiddleLeft;
+            subclassRow.Controls.Add(subclassLabel, 0, 0);
+            subclassRow.Controls.Add(subclass, 1, 0);
+            _multiclassSubclassRows[className] = subclassRow;
+            subclassRows.Controls.Add(subclassRow);
         }
         content.Controls.Add(classLevels);
+        subclassRows.SizeChanged += (_, _) =>
+        {
+            foreach (Control row in subclassRows.Controls)
+                row.Width = Math.Max(120, subclassRows.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 2);
+        };
+        content.Controls.Add(subclassRows);
         ConfigureBody(_classLevelSummary, true);
         content.Controls.Add(_classLevelSummary);
 
@@ -310,26 +360,51 @@ internal sealed class CharacterSheetPanel : UserControl
             {
                 Minimum = 3,
                 Maximum = 20,
-                Dock = DockStyle.Top,
-                Font = Theme.Body(10f),
+                Width = 58,
                 Tag = ability,
-                Margin = new Padding(2, 2, 2, 3),
-                Height = 30
+                Margin = new Padding(2, 0, 2, 0),
+                TextAlign = HorizontalAlignment.Center
             };
+            Theme.ConfigureInput(box, 10f);
             _abilities[ability] = box;
             var total = new Label
             {
-                AutoSize = true,
-                Dock = DockStyle.Top,
+                Dock = DockStyle.Fill,
                 ForeColor = Theme.Crimson,
-                Font = Theme.Body(9f, FontStyle.Bold),
-                Margin = new Padding(3, 1, 2, 5)
+                Font = Theme.Body(10f, FontStyle.Bold),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Margin = new Padding(2)
             };
             _abilityTotals[ability] = total;
-            var cell = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, Margin = new Padding(1) };
-            cell.Controls.Add(Caption(ability));
-            cell.Controls.Add(box);
+            var modifier = new Label
+            {
+                Dock = DockStyle.Fill,
+                ForeColor = Theme.Ink,
+                Font = Theme.Heading(22f),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Margin = new Padding(0)
+            };
+            _abilityModifiers[ability] = modifier;
+            var cell = new SheetCardPanel { Dock = DockStyle.Fill, Height = 126, Margin = new Padding(3) };
+            var abilityName = Caption(ability);
+            abilityName.Dock = DockStyle.Top;
+            abilityName.Height = 20;
+            abilityName.AutoSize = false;
+            abilityName.TextAlign = ContentAlignment.MiddleCenter;
+            modifier.Dock = DockStyle.Top;
+            modifier.Height = 38;
+            total.Dock = DockStyle.Top;
+            total.Height = 26;
+            var baseRow = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0) };
+            var baseCaption = Caption("BASE");
+            baseCaption.AutoSize = true;
+            baseCaption.Margin = new Padding(2, 8, 2, 0);
+            baseRow.Controls.Add(baseCaption);
+            baseRow.Controls.Add(box);
+            cell.Controls.Add(baseRow);
             cell.Controls.Add(total);
+            cell.Controls.Add(modifier);
+            cell.Controls.Add(abilityName);
             abilities.Controls.Add(cell, index % 3, index / 3);
         }
         content.Controls.Add(abilities);
@@ -688,6 +763,7 @@ internal sealed class CharacterSheetPanel : UserControl
             pair.Value.Enabled = multiclassAllowed || pair.Key.Equals(_state.ClassName, StringComparison.OrdinalIgnoreCase);
         }
         _level.Value = Math.Clamp(_state.TotalLevel, 1, 12);
+        _levelBadge.Text = _state.TotalLevel.ToString();
         _classLevelSummary.Text = Localization.Format("ClassLevelSummary", _state.TotalLevel, 12)
                                   + (multiclassAllowed ? "" : Environment.NewLine + Localization.T("ExplorerMulticlassDisabled"));
         RefreshSubclassControl();
@@ -735,6 +811,8 @@ internal sealed class CharacterSheetPanel : UserControl
                 : combo.Items[0] as string;
             combo.Visible = secondaryLevel > 0 && !secondaryClass.Equals(className, StringComparison.OrdinalIgnoreCase);
             combo.Enabled = combo.Visible && secondaryLevel >= secondaryRequiredLevel;
+            if (_multiclassSubclassRows.TryGetValue(secondaryClass, out var row))
+                row.Visible = combo.Visible;
             combo.EndUpdate();
         }
         _updating = previousUpdating;
@@ -927,7 +1005,11 @@ internal sealed class CharacterSheetPanel : UserControl
         RefreshShareId();
         var stats = CharacterCalculator.Calculate(_state, _items);
         foreach (var ability in CharacterCalculator.AbilityNames)
-            _abilityTotals[ability].Text = Localization.Format("AbilityTotal", stats.Abilities[ability]);
+        {
+            var score = stats.Abilities[ability];
+            _abilityTotals[ability].Text = $"TOTAL  {score}";
+            _abilityModifiers[ability].Text = Signed(CharacterCalculator.Modifier(score));
+        }
         _acValue.Text = stats.ArmourClass.ToString();
         _spellDcValue.Text = stats.SpellSaveDc.ToString();
         _criticalValue.Text = stats.CriticalThreshold == stats.SpellCriticalThreshold
@@ -1092,6 +1174,7 @@ internal sealed class CharacterSheetPanel : UserControl
         combo.DropDownStyle = ComboBoxStyle.DropDownList;
         combo.Margin = new Padding(2, 2, 2, 4);
         Theme.ConfigureModernCombo(combo, 9.5f);
+        combo.MinimumSize = new Size(0, 34);
     }
 
     private static void ConfigureSmallButton(Button button)

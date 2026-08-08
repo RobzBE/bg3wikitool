@@ -28,11 +28,13 @@ internal sealed class SaveCharacterSnapshot
     public List<string> EquippedKeys { get; } = [];
     public List<FeatSelection> Feats { get; } = [];
     public Dictionary<string, string> FightingStyles { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public List<PermanentBonusSelection> PermanentBonuses { get; } = [];
     public bool HasAbilityData { get; set; }
     public bool HasBaseAbilityData { get; set; }
     public bool HasEquipmentData { get; set; }
     public bool HasFeatData { get; set; }
     public bool HasFightingStyleData { get; set; }
+    public bool HasPermanentBonusData { get; set; }
 }
 
 internal sealed class SaveImportResult
@@ -247,6 +249,13 @@ internal static class SaveGameService
         if (source.HasFightingStyleData)
         {
             target.FightingStyles = new Dictionary<string, string>(source.FightingStyles, StringComparer.OrdinalIgnoreCase);
+            changed = true;
+        }
+        if (source.HasPermanentBonusData)
+        {
+            target.PermanentBonuses = source.PermanentBonuses
+                .Select(bonus => new PermanentBonusSelection { Name = bonus.Name, Choice = bonus.Choice })
+                .ToList();
             changed = true;
         }
         target.NormalizeClassLevels(!target.Difficulty.Equals("Explorer", StringComparison.OrdinalIgnoreCase));

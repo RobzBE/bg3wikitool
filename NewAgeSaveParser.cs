@@ -49,6 +49,116 @@ internal sealed class NewAgeSaveParser
         ApplyFeats(result, characterOwners);
         ApplyFightingStyles(result, characterOwners);
         ApplyEquipment(result, characterOwners, catalogue, savedItems);
+        ApplyPermanentBonuses(result, characterOwners, catalogue);
+    }
+
+    private void ApplyPermanentBonuses(
+        SaveImportResult result,
+        Dictionary<string, uint> characterOwners,
+        IReadOnlyList<ItemRecord> catalogue)
+    {
+        var scriptPassives = _components.TryGetValue("game.passives.v0.ScriptPassivesComponent", out var scriptComponent)
+            ? ElementByOwner(scriptComponent)
+            : [];
+        foreach (var character in characterOwners)
+        {
+            var snapshot = FindCharacter(result, character.Key);
+            if (snapshot is null)
+                continue;
+
+            if (scriptPassives.TryGetValue(character.Value, out var scriptElement))
+            {
+                foreach (var passive in ReadStringSet(scriptComponent, scriptElement))
+                    if (PermanentBonusFromPassive(passive) is { } bonus)
+                        AddPermanentBonus(snapshot, bonus);
+            }
+
+            InferPermanentAbilityBonus(snapshot, catalogue);
+        }
+    }
+
+    private List<string> ReadStringSet(Component component, int element)
+    {
+        var record = Record(component, element);
+        var start = ReadInt64(record);
+        var end = ReadInt64(record + 8);
+        if (!ValidRange(start, end, 16))
+            return [];
+        var values = new List<string>();
+        for (var cursor = start; cursor < end; cursor += 16)
+        {
+            var textStart = ReadInt64(Relative(cursor));
+            var textLength = ReadInt64(Relative(cursor) + 8);
+            if (textLength is > 0 and <= 256 && ValidRelative(textStart, (int)textLength))
+                values.Add(System.Text.Encoding.UTF8.GetString(_data, Relative(textStart), (int)textLength));
+        }
+        return values;
+    }
+
+    private static string? PermanentBonusFromPassive(string passive)
+    {
+        foreach (var mapping in PermanentPassiveNames)
+            if (passive.Contains(mapping.Key, StringComparison.OrdinalIgnoreCase))
+                return mapping.Value;
+        return null;
+    }
+
+    private static void InferPermanentAbilityBonus(SaveCharacterSnapshot snapshot, IReadOnlyList<ItemRecord> catalogue)
+    {
+        if (!snapshot.HasAbilityData || !snapshot.HasBaseAbilityData)
+            return;
+        var state = new CharacterState
+        {
+            Name = snapshot.Name,
+            Race = snapshot.Race,
+            ClassName = string.IsNullOrWhiteSpace(snapshot.StartingClass) ? "Fighter" : snapshot.StartingClass,
+            Difficulty = string.IsNullOrWhiteSpace(snapshot.Difficulty) ? "Balanced" : snapshot.Difficulty,
+            Level = snapshot.Level ?? Math.Max(1, snapshot.ClassLevels.Values.Sum()),
+            ClassLevels = snapshot.ClassLevels.Count > 0
+                ? snapshot.ClassLevels.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
+            Subclasses = snapshot.Subclasses.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase),
+            Feats = snapshot.Feats.Select(feat => new FeatSelection { Name = feat.Name, Choice = feat.Choice }).ToList()
+        };
+        if (state.ClassLevels.Count == 0)
+            state.ClassLevels[state.ClassName] = state.Level;
+        foreach (var ability in snapshot.BaseAbilities)
+            state.SetAbility(ability.Key, ability.Value);
+
+        var previousEquipment = catalogue.Select(item => item.Equipped).ToArray();
+        var equipped = snapshot.EquippedKeys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            for (var index = 0; index < catalogue.Count; index++)
+                catalogue[index].Equipped = equipped.Contains(catalogue[index].ProgressKey);
+            var expected = CharacterCalculator.Calculate(state, catalogue).Abilities;
+            var differences = CharacterCalculator.AbilityNames
+                .ToDictionary(ability => ability, ability => snapshot.Abilities.GetValueOrDefault(ability) - expected.GetValueOrDefault(ability), StringComparer.OrdinalIgnoreCase);
+            var nonZero = differences.Where(pair => pair.Value != 0).ToList();
+            if (nonZero.Count != 1)
+                return;
+            var delta = nonZero[0];
+            if (delta.Value == 1 && !delta.Key.Equals("CHA", StringComparison.OrdinalIgnoreCase))
+                AddPermanentBonus(snapshot, "Auntie Ethel's Hair", delta.Key);
+            else if (delta.Value == -2 && delta.Key is "INT" or "WIS" or "CON")
+            {
+                var fullAbility = delta.Key switch { "INT" => "Intelligence", "WIS" => "Wisdom", _ => "Constitution" };
+                AddPermanentBonus(snapshot, "Zaith'isk Penalty: " + fullAbility);
+            }
+        }
+        finally
+        {
+            for (var index = 0; index < catalogue.Count; index++)
+                catalogue[index].Equipped = previousEquipment[index];
+        }
+    }
+
+    private static void AddPermanentBonus(SaveCharacterSnapshot snapshot, string name, string choice = "")
+    {
+        if (snapshot.PermanentBonuses.Any(bonus => bonus.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            return;
+        snapshot.PermanentBonuses.Add(new PermanentBonusSelection { Name = name, Choice = choice });
+        snapshot.HasPermanentBonusData = true;
     }
 
     private void ApplyFightingStyles(SaveImportResult result, Dictionary<string, uint> characterOwners)
@@ -691,6 +801,22 @@ internal sealed class NewAgeSaveParser
         ["FightingStyle_GreatWeaponFighting"] = "Great Weapon Fighting",
         ["FightingStyle_Protection"] = "Protection",
         ["FightingStyle_TwoWeaponFighting"] = "Two-Weapon Fighting"
+    };
+
+    private static readonly Dictionary<string, string> PermanentPassiveNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["BloodMerchant_ExplosiveBlood"] = "Unstable Blood",
+        ["NecromancyOfThay_ForbiddenKnowledge"] = "Forbidden Knowledge",
+        ["Awakened"] = "Awakened",
+        ["BOOOAL"] = "BOOOAL's Benediction",
+        ["BrandOfTheAbsolute"] = "Brand of the Absolute",
+        ["Loviatar"] = "Loviatar's Love",
+        ["GithzeraiMindBarrier"] = "Githzerai Mind Barrier",
+        ["AnointedInSplendour"] = "Anointed in Splendour",
+        ["TharchiateCodex"] = "The Tharchiate Codex: Blessing",
+        ["TharchiateWithering"] = "Tharchiate Withering",
+        ["PartialCeremorphosis"] = "Partial Ceremorphosis",
+        ["VampireAscendant"] = "Vampire Ascendant"
     };
 
     private static readonly Dictionary<Guid, string> FeatNames = new()

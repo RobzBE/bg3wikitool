@@ -30,10 +30,12 @@ internal static class AppDiagnostics
                 character.EquippedKeys,
                 character.Feats,
                 character.FightingStyles,
+                character.PermanentBonuses,
                 character.HasAbilityData,
                 character.HasEquipmentData,
                 character.HasFeatData,
-                character.HasFightingStyleData
+                character.HasFightingStyleData,
+                character.HasPermanentBonusData
             })
         };
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(reportPath))!);

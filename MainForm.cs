@@ -16,8 +16,8 @@ public sealed class MainForm : Form
     private readonly Panel _footerPanel = new();
     private readonly TextBox _searchBox = new();
     private readonly ComboBox _languageBox = new();
-    private readonly CheckedListBox _actList = new();
-    private readonly CheckedListBox _rarityList = new();
+    private readonly CheckedListBox _actList = new ModernCheckedListBox();
+    private readonly CheckedListBox _rarityList = new ModernCheckedListBox();
     private readonly ComboBox _typeBox = new();
     private readonly ComboBox _placeBox = new();
     private readonly CheckBox _notesOnly = new ModernCheckBox();
@@ -85,11 +85,20 @@ public sealed class MainForm : Form
         BuildHeader();
         BuildFooter();
         BuildLayout();
+        ApplyHighContrastCursor(this);
         PopulateFilterChoices();
         WireEvents();
         ApplyLanguage();
         ApplyFilters();
         ConfigureSaveWatcher();
+    }
+
+    private static void ApplyHighContrastCursor(Control root)
+    {
+        if (root is not TextBoxBase)
+            root.Cursor = HighContrastCursor.Current;
+        foreach (Control child in root.Controls)
+            ApplyHighContrastCursor(child);
     }
 
     public void RenderPreview(string path, int? width = null, int? height = null)
@@ -395,7 +404,7 @@ public sealed class MainForm : Form
         AddLocalizedCaption(layout, "SearchAll");
         _searchBox.PlaceholderText = Localization.T("SearchPlaceholder");
         _searchBox.Dock = DockStyle.Top;
-        _searchBox.Font = Theme.Body(10f);
+        Theme.ConfigureInput(_searchBox, 10f);
         _searchBox.Margin = new Padding(0, 0, 0, 10);
         layout.Controls.Add(_searchBox);
 
@@ -447,7 +456,7 @@ public sealed class MainForm : Form
         var sortPanel = new TableLayoutPanel
         {
             Dock = DockStyle.Top,
-            Height = 33,
+            Height = 38,
             ColumnCount = 2,
             Margin = new Padding(0, 0, 0, 10)
         };
