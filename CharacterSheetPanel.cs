@@ -15,6 +15,7 @@ internal sealed class CharacterSheetPanel : UserControl
     private readonly ComboBox _class = new();
     private readonly ComboBox _subclass = new();
     private readonly ComboBox _difficulty = new();
+    private readonly TableLayoutPanel _difficultyHeader = new();
     private readonly NumericUpDown _level = new WheelSafeNumericUpDown();
     private readonly Label _levelBadge = new();
     private readonly Dictionary<string, NumericUpDown> _abilities = [];
@@ -119,6 +120,7 @@ internal sealed class CharacterSheetPanel : UserControl
 
     public CharacterState CurrentState => _state;
     public int ActiveTemplateIndex => _activeTemplateIndex;
+    public Control DifficultyHeaderControl => _difficultyHeader;
     public void SelectBuildTab() => _tabs.SelectedTab = _buildTab;
     public bool CalculationToolTipsReady =>
         !string.IsNullOrWhiteSpace(_calculationToolTip.GetToolTip(_acValue))
@@ -134,7 +136,7 @@ internal sealed class CharacterSheetPanel : UserControl
         _copyShareLink.Text = Localization.T("CopyLink");
         _importShareId.Text = Localization.T("Import");
         _identityCaption.Text = Localization.T("Identity");
-        _abilityCaption.Text = Localization.T("BaseAbilities");
+        _abilityCaption.Text = Localization.Format("AbilityScoresAtLevel", _state.TotalLevel);
         _offenseCaption.Text = Localization.T("Offense");
         _defenseCaption.Text = Localization.T("Defense");
         _threatCaption.Text = Localization.T("EnemyHitChance");
@@ -154,6 +156,7 @@ internal sealed class CharacterSheetPanel : UserControl
         _statsTab.Text = Localization.T("StatsTab");
         _difficultyCaption.Text = Localization.T("Difficulty");
         _difficultyInfo.Text = Localization.T("Difficulty" + (_difficulty.SelectedItem as string ?? _state.Difficulty));
+        _calculationToolTip.SetToolTip(_difficulty, _difficultyInfo.Text);
         _benchmarkNote.Text = Localization.T("BenchmarkNote");
         _characterThreatCaption.Text = Localization.T("CharacterHitChance");
         RefreshTemplateSelector();
@@ -245,6 +248,25 @@ internal sealed class CharacterSheetPanel : UserControl
         ConfigureCaption(_subclassCaption);
         ConfigureCaption(_levelCaption);
         ConfigureCaption(_difficultyCaption);
+        _difficultyHeader.Dock = DockStyle.Fill;
+        _difficultyHeader.ColumnCount = 3;
+        _difficultyHeader.RowCount = 1;
+        _difficultyHeader.Margin = new Padding(0);
+        _difficultyHeader.Padding = new Padding(0);
+        _difficultyHeader.BackColor = Theme.CrimsonDark;
+        _difficultyHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 108));
+        _difficultyHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 260));
+        _difficultyHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        _difficultyCaption.Dock = DockStyle.Fill;
+        _difficultyCaption.AutoSize = false;
+        _difficultyCaption.ForeColor = Theme.GoldLight;
+        _difficultyCaption.Font = Theme.Body(8f, FontStyle.Bold);
+        _difficultyCaption.TextAlign = ContentAlignment.MiddleLeft;
+        _difficultyCaption.Margin = new Padding(0);
+        _difficulty.Dock = DockStyle.Fill;
+        _difficulty.Margin = new Padding(0, 2, 0, 2);
+        _difficultyHeader.Controls.Add(_difficultyCaption, 0, 0);
+        _difficultyHeader.Controls.Add(_difficulty, 1, 0);
         var levelCard = new SheetCardPanel { Dock = DockStyle.Fill, Height = 78, Margin = new Padding(0, 2, 5, 4) };
         _levelCaption.Dock = DockStyle.Top;
         _levelCaption.Height = 20;
@@ -267,24 +289,17 @@ internal sealed class CharacterSheetPanel : UserControl
         _level.ReadOnly = true;
         _level.InterceptArrowKeys = false;
         Theme.ConfigureInput(_level);
-        identity.Controls.Add(_difficultyCaption, 0, 2);
-        identity.Controls.Add(_difficulty, 0, 3);
-        identity.SetColumnSpan(_difficulty, 3);
-        identity.SetColumnSpan(_difficultyCaption, 3);
-        ConfigureBody(_difficultyInfo, true);
-        identity.Controls.Add(_difficultyInfo, 0, 4);
-        identity.SetColumnSpan(_difficultyInfo, 3);
-        identity.Controls.Add(_subclassCaption, 0, 5);
+        identity.Controls.Add(_subclassCaption, 0, 2);
         identity.SetColumnSpan(_subclassCaption, 3);
-        identity.Controls.Add(_subclass, 0, 6);
+        identity.Controls.Add(_subclass, 0, 3);
         identity.SetColumnSpan(_subclass, 3);
         content.Controls.Add(identity);
 
         ConfigureSection(_classLevelsCaption);
         content.Controls.Add(_classLevelsCaption);
-        var classLevels = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, Margin = new Padding(0, 0, 0, 4) };
-        for (var column = 0; column < 2; column++)
-            classLevels.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+        var classLevels = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 4, Margin = new Padding(0, 0, 0, 4) };
+        for (var column = 0; column < 4; column++)
+            classLevels.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
         var subclassRows = new FlowLayoutPanel
         {
             Dock = DockStyle.Top,
@@ -301,31 +316,31 @@ internal sealed class CharacterSheetPanel : UserControl
             {
                 Minimum = 0,
                 Maximum = 12,
-                Width = 54,
+                Width = 42,
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 Tag = className,
                 Margin = new Padding(2, 0, 2, 0),
                 TextAlign = HorizontalAlignment.Center
             };
-            Theme.ConfigureInput(box, 10f);
+            Theme.ConfigureInput(box, 9.5f);
             _classLevels[className] = box;
             var subclass = new ComboBox { Tag = className, Margin = new Padding(2), Visible = false };
             ConfigureCombo(subclass);
             _multiclassSubclasses[className] = subclass;
-            var cell = new SheetCardPanel { Dock = DockStyle.Fill, Height = 58, Margin = new Padding(2) };
+            var cell = new SheetCardPanel { Dock = DockStyle.Fill, Height = 52, Margin = new Padding(2) };
             var classTile = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Margin = new Padding(0), Padding = new Padding(1) };
             classTile.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            classTile.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 60));
+            classTile.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 48));
             var classLabel = Caption(className);
             classLabel.Dock = DockStyle.Fill;
             classLabel.AutoSize = false;
             classLabel.AutoEllipsis = true;
             classLabel.TextAlign = ContentAlignment.MiddleLeft;
-            classLabel.Font = Theme.Body(8.25f, FontStyle.Bold);
+            classLabel.Font = Theme.Body(7.5f, FontStyle.Bold);
             classTile.Controls.Add(classLabel, 0, 0);
             classTile.Controls.Add(box, 1, 0);
             cell.Controls.Add(classTile);
-            classLevels.Controls.Add(cell, index % 2, index / 2);
+            classLevels.Controls.Add(cell, index % 4, index / 4);
 
             var subclassRow = new TableLayoutPanel { Height = 38, ColumnCount = 2, Margin = new Padding(0, 1, 0, 1), Visible = false };
             subclassRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 108));
@@ -412,7 +427,7 @@ internal sealed class CharacterSheetPanel : UserControl
         ConfigureSection(_permanentBonusesCaption);
         content.Controls.Add(_permanentBonusesCaption);
         _permanentBonuses.Dock = DockStyle.Top;
-        _permanentBonuses.Height = 190;
+        _permanentBonuses.Height = 132;
         _permanentBonuses.CheckOnClick = true;
         _permanentBonuses.Font = Theme.Body(9.5f);
         _permanentBonuses.BackColor = Theme.Parchment;
@@ -425,25 +440,36 @@ internal sealed class CharacterSheetPanel : UserControl
 
         ConfigureSection(_classFeaturesCaption);
         content.Controls.Add(_classFeaturesCaption);
-        var styles = new TableLayoutPanel { Dock = DockStyle.Top, Height = 152, AutoSize = false, ColumnCount = 2, RowCount = 4, Margin = new Padding(0, 0, 0, 4) };
-        styles.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 35));
-        styles.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 65));
+        var styles = new TableLayoutPanel { Dock = DockStyle.Top, Height = 84, AutoSize = false, ColumnCount = 4, RowCount = 2, Margin = new Padding(0, 0, 0, 4) };
+        styles.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 18));
+        styles.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 32));
+        styles.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 18));
+        styles.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 32));
+        var styleRows = new List<(Control Label, Control Value)>();
         for (var index = 0; index < BuildOptions.FightingStyleSlots.Length; index++)
         {
             var slot = BuildOptions.FightingStyleSlots[index];
             var combo = new ComboBox();
             ConfigureCombo(combo);
             _fightingStyles[slot.Key] = combo;
-            styles.Controls.Add(Caption(slot.Label), 0, index);
-            styles.Controls.Add(combo, 1, index);
+            var block = index % 2;
+            var row = index / 2;
+            var label = Caption(slot.Label);
+            styles.Controls.Add(label, block * 2, row);
+            styles.Controls.Add(combo, block * 2 + 1, row);
+            styleRows.Add((label, combo));
         }
+        ConfigureResponsiveRows(styles, styleRows, 720, 35f);
         content.Controls.Add(styles);
 
         ConfigureSection(_featsCaption);
         content.Controls.Add(_featsCaption);
-        var feats = new TableLayoutPanel { Dock = DockStyle.Top, Height = 152, AutoSize = false, ColumnCount = 2, RowCount = 4, Margin = new Padding(0, 0, 0, 3) };
-        feats.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 59));
-        feats.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 41));
+        var feats = new TableLayoutPanel { Dock = DockStyle.Top, Height = 84, AutoSize = false, ColumnCount = 4, RowCount = 2, Margin = new Padding(0, 0, 0, 3) };
+        feats.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 29.5f));
+        feats.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20.5f));
+        feats.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 29.5f));
+        feats.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20.5f));
+        var featRows = new List<(Control Label, Control Value)>();
         for (var index = 0; index < 4; index++)
         {
             var featCombo = new ComboBox();
@@ -453,9 +479,13 @@ internal sealed class CharacterSheetPanel : UserControl
             featCombo.Tag = index;
             choiceCombo.Tag = index;
             _featSlots.Add(new FeatSlotControls(featCombo, choiceCombo));
-            feats.Controls.Add(featCombo, 0, index);
-            feats.Controls.Add(choiceCombo, 1, index);
+            var block = index % 2;
+            var row = index / 2;
+            feats.Controls.Add(featCombo, block * 2, row);
+            feats.Controls.Add(choiceCombo, block * 2 + 1, row);
+            featRows.Add((featCombo, choiceCombo));
         }
+        ConfigureResponsiveRows(feats, featRows, 720, 59f);
         content.Controls.Add(feats);
         ConfigureBody(_featSummary, true);
         content.Controls.Add(_featSummary);
@@ -463,7 +493,7 @@ internal sealed class CharacterSheetPanel : UserControl
         ConfigureSection(_activeBuffsCaption);
         content.Controls.Add(_activeBuffsCaption);
         _buffs.Dock = DockStyle.Top;
-        _buffs.Height = 185;
+        _buffs.Height = 132;
         _buffs.CheckOnClick = true;
         _buffs.Font = Theme.Body(9.5f);
         _buffs.BackColor = Theme.Parchment;
@@ -474,7 +504,7 @@ internal sealed class CharacterSheetPanel : UserControl
         ConfigureSection(_classOptionsCaption);
         content.Controls.Add(_classOptionsCaption);
         _classOptions.Dock = DockStyle.Top;
-        _classOptions.Height = 120;
+        _classOptions.Height = 92;
         _classOptions.CheckOnClick = true;
         _classOptions.Font = Theme.Body(9.5f);
         _classOptions.BackColor = Theme.Parchment;
@@ -508,34 +538,21 @@ internal sealed class CharacterSheetPanel : UserControl
         highlights.Controls.Add(_criticalCard, 2, 0);
         statsContent.Controls.Add(highlights);
 
-        ConfigureSection(_offenseCaption);
-        statsContent.Controls.Add(_offenseCaption);
-        ConfigureBody(_offense);
-        statsContent.Controls.Add(_offense);
+        var combatSummaries = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = true, Margin = new Padding(0, 2, 0, 10), Padding = new Padding(0) };
+        combatSummaries.Controls.Add(CreateSummaryCard(_offenseCaption, _offense));
+        combatSummaries.Controls.Add(CreateSummaryCard(_defenseCaption, _defense, _saves));
+        ConfigureResponsivePair(combatSummaries, 720);
+        statsContent.Controls.Add(combatSummaries);
 
-        ConfigureSection(_defenseCaption);
-        statsContent.Controls.Add(_defenseCaption);
-        ConfigureBody(_defense);
-        ConfigureBody(_saves);
-        statsContent.Controls.Add(_defense);
-        statsContent.Controls.Add(_saves);
-
-        var threatHeadings = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, Margin = new Padding(0, 4, 0, 2) };
-        threatHeadings.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        threatHeadings.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        ConfigureSection(_threatCaption);
-        ConfigureSection(_characterThreatCaption);
-        threatHeadings.Controls.Add(_threatCaption, 0, 0);
-        threatHeadings.Controls.Add(_characterThreatCaption, 1, 0);
-        statsContent.Controls.Add(threatHeadings);
-        var threatColumns = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, Margin = new Padding(0, 0, 0, 3) };
-        threatColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        threatColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        ConfigureStatsSectionHeader(_threatCaption);
+        ConfigureStatsSectionHeader(_characterThreatCaption);
         ConfigureThreatFlow(_enemyThreats);
         ConfigureThreatFlow(_characterThreats);
-        threatColumns.Controls.Add(_enemyThreats, 0, 0);
-        threatColumns.Controls.Add(_characterThreats, 1, 0);
-        statsContent.Controls.Add(threatColumns);
+        var threatGroups = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = true, Margin = new Padding(0, 0, 0, 3), Padding = new Padding(0) };
+        threatGroups.Controls.Add(CreateThreatGroup(_threatCaption, _enemyThreats));
+        threatGroups.Controls.Add(CreateThreatGroup(_characterThreatCaption, _characterThreats));
+        ConfigureResponsivePair(threatGroups, 760);
+        statsContent.Controls.Add(threatGroups);
         ConfigureBody(_benchmarkNote, true);
         statsContent.Controls.Add(_benchmarkNote);
 
@@ -611,6 +628,7 @@ internal sealed class CharacterSheetPanel : UserControl
         foreach (var ability in CharacterCalculator.AbilityNames)
             _abilities[ability].Value = Math.Clamp(_state.GetAbility(ability), 3, 20);
         _difficultyInfo.Text = Localization.T("Difficulty" + (_difficulty.SelectedItem as string ?? "Balanced"));
+        _calculationToolTip.SetToolTip(_difficulty, _difficultyInfo.Text);
         _characterName.Text = _state.Name;
         RefreshTemplateSelector();
         RefreshBuildOptionControls();
@@ -693,6 +711,7 @@ internal sealed class CharacterSheetPanel : UserControl
         _state.ClassName = _class.SelectedItem as string ?? "Fighter";
         _state.Difficulty = _difficulty.SelectedItem as string ?? "Balanced";
         _difficultyInfo.Text = Localization.T("Difficulty" + _state.Difficulty);
+        _calculationToolTip.SetToolTip(_difficulty, _difficultyInfo.Text);
         foreach (var pair in _classLevels)
             _state.ClassLevels[pair.Key] = (int)pair.Value.Value;
         _state.SetSubclass(_state.ClassName, _subclass.Enabled ? _subclass.SelectedItem as string : "");
@@ -1004,6 +1023,7 @@ internal sealed class CharacterSheetPanel : UserControl
     {
         RefreshShareId();
         var stats = CharacterCalculator.Calculate(_state, _items);
+        _abilityCaption.Text = Localization.Format("AbilityScoresAtLevel", _state.TotalLevel);
         foreach (var ability in CharacterCalculator.AbilityNames)
         {
             var score = stats.Abilities[ability];
@@ -1047,6 +1067,8 @@ internal sealed class CharacterSheetPanel : UserControl
             _enemyThreats.Controls.Add(CreateThreatCard(threat, characterChance: false));
             _characterThreats.Controls.Add(CreateThreatCard(threat, characterChance: true));
         }
+        ResizeThreatCards(_enemyThreats);
+        ResizeThreatCards(_characterThreats);
         _enemyThreats.ResumeLayout();
         _characterThreats.ResumeLayout();
 
@@ -1077,21 +1099,24 @@ internal sealed class CharacterSheetPanel : UserControl
 
     private Control CreateThreatCard(ActThreat threat, bool characterChance)
     {
-        var panel = new Panel
+        var panel = new SheetCardPanel
         {
-            Width = 206,
-            Height = 132,
-            BackColor = Color.FromArgb(238, 220, 184),
-            Margin = new Padding(0, 0, 0, 4),
-            Padding = new Padding(7, 4, 7, 3)
+            Width = 360,
+            Height = 142,
+            BackColor = Color.FromArgb(255, 249, 235),
+            Margin = new Padding(3, 0, 3, 7),
+            Padding = new Padding(8)
         };
         var title = new Label
         {
             Dock = DockStyle.Top,
-            Height = 20,
+            Height = 29,
             Text = $"{threat.Act}  —  {Localization.T(threat.Benchmark)}",
-            Font = Theme.Body(8.5f, FontStyle.Bold),
-            ForeColor = Theme.Crimson
+            Font = Theme.Body(9f, FontStyle.Bold),
+            ForeColor = Theme.GoldLight,
+            BackColor = Theme.CrimsonDark,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(8, 0, 4, 0)
         };
         var values = new Label
         {
@@ -1108,8 +1133,9 @@ internal sealed class CharacterSheetPanel : UserControl
                     FormatChance(threat.AttackHitChance), threat.AttackEnemy, threat.AttackBonus,
                     FormatChance(threat.SpellAttackHitChance), threat.SpellEnemy, threat.SpellAttackBonus,
                     threat.SpellDc, FormatSaveChances(threat.SpellEffectChances)),
-            Font = Theme.Body(7.35f),
-            ForeColor = Theme.Ink
+            Font = Theme.Body(8.25f),
+            ForeColor = Theme.Ink,
+            Padding = new Padding(7, 6, 5, 3)
         };
         panel.Controls.Add(values);
         panel.Controls.Add(title);
@@ -1126,6 +1152,126 @@ internal sealed class CharacterSheetPanel : UserControl
         flow.FlowDirection = FlowDirection.TopDown;
         flow.WrapContents = false;
         flow.Margin = new Padding(0);
+        flow.SizeChanged += (_, _) => ResizeThreatCards(flow);
+    }
+
+    private static void ResizeThreatCards(FlowLayoutPanel flow)
+    {
+        var width = Math.Max(120, flow.ClientSize.Width - 6);
+        foreach (Control card in flow.Controls)
+            card.Width = width;
+    }
+
+    private static Control CreateThreatGroup(Label caption, FlowLayoutPanel flow)
+    {
+        var group = new TableLayoutPanel { AutoSize = true, ColumnCount = 1, RowCount = 2, Margin = new Padding(3), Padding = new Padding(0) };
+        group.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        group.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+        group.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        group.Controls.Add(caption, 0, 0);
+        group.Controls.Add(flow, 0, 1);
+        return group;
+    }
+
+    private static void ConfigureResponsivePair(FlowLayoutPanel host, int twoColumnBreakpoint)
+    {
+        host.SizeChanged += (_, _) => ResizeResponsivePair(host, twoColumnBreakpoint);
+        host.ParentChanged += (_, _) => ResizeResponsivePair(host, twoColumnBreakpoint);
+    }
+
+    private static void ResizeResponsivePair(FlowLayoutPanel host, int twoColumnBreakpoint)
+    {
+        var available = Math.Max(240, host.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 2);
+        var width = available >= twoColumnBreakpoint ? (available - 12) / 2 : available - 6;
+        foreach (Control child in host.Controls)
+            child.Width = width;
+    }
+
+    private static void ConfigureResponsiveRows(
+        TableLayoutPanel table,
+        IReadOnlyList<(Control Label, Control Value)> rows,
+        int twoColumnBreakpoint,
+        float labelPercent)
+    {
+        void Arrange()
+        {
+            var wide = table.ClientSize.Width >= twoColumnBreakpoint;
+            if (table.Tag is bool previous && previous == wide)
+                return;
+            table.Tag = wide;
+            table.SuspendLayout();
+            table.Controls.Clear();
+            table.ColumnStyles.Clear();
+            table.RowStyles.Clear();
+            table.ColumnCount = wide ? 4 : 2;
+            table.RowCount = wide ? 2 : rows.Count;
+            table.Height = (wide ? 2 : rows.Count) * 42;
+            if (wide)
+            {
+                table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, labelPercent / 2f));
+                table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, (100f - labelPercent) / 2f));
+                table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, labelPercent / 2f));
+                table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, (100f - labelPercent) / 2f));
+            }
+            else
+            {
+                table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, labelPercent));
+                table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f - labelPercent));
+            }
+            for (var index = 0; index < rows.Count; index++)
+            {
+                var block = wide ? index % 2 : 0;
+                var row = wide ? index / 2 : index;
+                table.Controls.Add(rows[index].Label, block * 2, row);
+                table.Controls.Add(rows[index].Value, block * 2 + 1, row);
+            }
+            table.ResumeLayout(true);
+        }
+
+        table.SizeChanged += (_, _) => Arrange();
+        table.ParentChanged += (_, _) => Arrange();
+        Arrange();
+    }
+
+    private static Control CreateSummaryCard(Label caption, params Label[] lines)
+    {
+        var card = new SheetCardPanel { Height = 132, Margin = new Padding(3), Padding = new Padding(8) };
+        caption.Dock = DockStyle.Top;
+        caption.Height = 30;
+        caption.AutoSize = false;
+        caption.BackColor = Theme.CrimsonDark;
+        caption.ForeColor = Theme.GoldLight;
+        caption.Font = Theme.Body(9f, FontStyle.Bold);
+        caption.TextAlign = ContentAlignment.MiddleLeft;
+        caption.Padding = new Padding(8, 0, 4, 0);
+        var body = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = lines.Length, Padding = new Padding(7, 6, 7, 4), Margin = new Padding(0) };
+        body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        foreach (var line in lines)
+        {
+            body.RowStyles.Add(new RowStyle(SizeType.Percent, 100f / lines.Length));
+            line.Dock = DockStyle.Fill;
+            line.AutoSize = false;
+            line.ForeColor = Theme.Ink;
+            line.Font = Theme.Body(9f);
+            line.TextAlign = ContentAlignment.TopLeft;
+            line.Margin = new Padding(0);
+            body.Controls.Add(line);
+        }
+        card.Controls.Add(body);
+        card.Controls.Add(caption);
+        return card;
+    }
+
+    private static void ConfigureStatsSectionHeader(Label label)
+    {
+        label.Dock = DockStyle.Fill;
+        label.AutoSize = false;
+        label.BackColor = Theme.CrimsonDark;
+        label.ForeColor = Theme.GoldLight;
+        label.Font = Theme.Body(9f, FontStyle.Bold);
+        label.TextAlign = ContentAlignment.MiddleLeft;
+        label.Padding = new Padding(9, 0, 4, 0);
+        label.Margin = new Padding(3, 0, 3, 0);
     }
 
     private static string FormatChance(double chance)

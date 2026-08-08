@@ -260,7 +260,7 @@ public sealed class MainForm : Form
     private void BuildHeader()
     {
         _headerPanel.Dock = DockStyle.Top;
-        _headerPanel.Height = 88;
+        _headerPanel.Height = 112;
         _headerPanel.BackColor = Theme.CrimsonDark;
         _headerPanel.Padding = new Padding(20, 8, 20, 8);
         var layout = new TableLayoutPanel
@@ -274,12 +274,15 @@ public sealed class MainForm : Form
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 43));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 57));
 
-        var identity = new Panel { Dock = DockStyle.Fill, Margin = new Padding(0) };
+        var identity = new TableLayoutPanel { Dock = DockStyle.Fill, Margin = new Padding(0), ColumnCount = 1, RowCount = 3 };
+        identity.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        identity.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+        identity.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+        identity.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         var title = new Label
         {
             Text = "BALDUR'S GATE 3  •  ITEM EXPLORER",
-            Dock = DockStyle.Top,
-            Height = 38,
+            Dock = DockStyle.Fill,
             ForeColor = Theme.GoldLight,
             Font = Theme.Heading(19f),
             TextAlign = ContentAlignment.MiddleLeft
@@ -287,16 +290,16 @@ public sealed class MainForm : Form
         var subtitle = new Label
         {
             Text = "Act 1, 2 & 3 • offline • volledige iteminformatie • data & afbeeldingen: bg3.wiki",
-            Dock = DockStyle.Bottom,
-            Height = 24,
+            Dock = DockStyle.Fill,
             ForeColor = Color.FromArgb(223, 205, 170),
             Font = Theme.Body(9f, FontStyle.Italic),
             TextAlign = ContentAlignment.MiddleLeft
         };
         subtitle.Text = Localization.T("Subtitle");
         subtitle.Tag = "i18n:Subtitle";
-        identity.Controls.Add(title);
-        identity.Controls.Add(subtitle);
+        identity.Controls.Add(title, 0, 0);
+        identity.Controls.Add(_characterSheet.DifficultyHeaderControl, 0, 1);
+        identity.Controls.Add(subtitle, 0, 2);
 
         var saveArea = new TableLayoutPanel
         {

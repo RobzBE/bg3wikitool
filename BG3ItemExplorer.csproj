@@ -9,7 +9,7 @@
     <ApplicationIcon>Assets\BG3-Item-Explorer.ico</ApplicationIcon>
     <AssemblyName>BG3-Item-Explorer</AssemblyName>
     <RootNamespace>BG3ItemExplorer</RootNamespace>
-    <Version>1.4.0</Version>
+    <Version>1.5.0</Version>
     <Authors>Robrecht</Authors>
     <Product>BG3 Item Explorer</Product>
     <Description>Portable searchable Baldur's Gate 3 item index.</Description>
